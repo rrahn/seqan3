@@ -126,7 +126,7 @@ struct translate_fn
             return detail::view_translate{std::forward<urng_t>(urange), tf};
     }
 
-    //!\brief This adaptor is usuable without setting the frames parameter in which case the default is chosen.
+    //!\brief This adaptor is usable without setting the frames parameter in which case the default is chosen.
     template <std::ranges::Range urng_t>
     constexpr friend auto operator|(urng_t && urange, translate_fn const & me)
     {

@@ -107,8 +107,7 @@ struct builtin_simd_traits_helper<builtin_simd_t>
 /*!\brief This class inherits from std::true_type, **iff**
  * seqan3::detail::builtin_simd<scalar_t, length>::type is a builtin simd type.
  * \ingroup simd
- * \tparam scalar_type The underlying type of a simd vector
- * \tparam length_v The number of packed values in a simd vector
+ * \tparam builtin_simd_t The type to check.
  *
  * \include test/snippet/core/simd/detail/is_builtin_simd.cpp
  * \sa https://gcc.gnu.org/onlinedocs/gcc/Vector-Extensions.html
@@ -116,6 +115,14 @@ struct builtin_simd_traits_helper<builtin_simd_t>
 template <typename builtin_simd_t>
 struct is_builtin_simd : std::bool_constant<builtin_simd_traits_helper<builtin_simd_t>::value>
 {};
+
+/*!\brief Helper variable to test whether a type is a simd builtin type.
+ * \ingroup simd
+ * \tparam builtin_simd_t The type to check.
+ * \see seqan3::detail::is_builtin_simd
+ */
+template <typename builtin_simd_t>
+constexpr bool is_builtin_simd_v = is_builtin_simd<builtin_simd_t>::value;
 
 /*!\brief This function specializes seqan3::detail::default_simd_max_length for
  * seqan3::detail::builtin_simd.

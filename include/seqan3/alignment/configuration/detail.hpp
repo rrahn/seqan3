@@ -30,7 +30,9 @@ enum struct align_config_id : uint8_t
     max_error,    //!< ID for the \ref seqan3::align_cfg::max_error "max_error" option.
     result,       //!< ID for the \ref seqan3::align_cfg::result "result" option.
     scoring,      //!< ID for the \ref seqan3::align_cfg::scoring "scoring" option.
-    SIZE          //!< Represents the number of configuration elements.
+    simd_gap,     //!< \if DEV ID for the \ref seqan3::align_cfg::simd_gap "simd gap" option. \endif
+    simd_scoring, //!< \if DEV ID for the \ref seqan3::align_cfg::simd_scoring "simd scoring" option. \endif
+    SIZE          //!< \if DEV Represents the number of configuration elements. \endif
 };
 
 // ----------------------------------------------------------------------------
@@ -46,15 +48,17 @@ template <>
 inline constexpr std::array<std::array<bool, static_cast<uint8_t>(align_config_id::SIZE)>,
                             static_cast<uint8_t>(align_config_id::SIZE)> compatibility_table<align_config_id>
 {
-    {   //0  1  2  3  4, 5  6  7
-        { 0, 1, 1, 1, 0, 1, 1, 1}, // 0: aligned_ends
-        { 1, 0, 1, 1, 1, 1, 1, 1}, // 1: band
-        { 1, 1, 0, 1, 1, 1, 1, 1}, // 2: gap
-        { 1, 1, 1, 0, 0, 1, 1, 1}, // 3: global
-        { 0, 1, 1, 0, 0, 0, 1, 1}, // 4: local
-        { 1, 1, 1, 1, 0, 0, 1, 1}, // 5: max_error
-        { 1, 1, 1, 1, 1, 1, 0, 1}, // 6: result
-        { 1, 1, 1, 1, 1, 1, 1, 0}  // 7: scoring
+    {   //0  1  2  3  4, 5  6  7  8  9
+        { 0, 1, 1, 1, 0, 1, 1, 1, 1, 1}, // 0: aligned_ends
+        { 1, 0, 1, 1, 1, 1, 1, 1, 1, 1}, // 1: band
+        { 1, 1, 0, 1, 1, 1, 1, 1, 1, 1}, // 2: gap
+        { 1, 1, 1, 0, 0, 1, 1, 1, 1, 1}, // 3: global
+        { 0, 1, 1, 0, 0, 0, 1, 1, 1, 1}, // 4: local
+        { 1, 1, 1, 1, 0, 0, 1, 1, 1, 1}, // 5: max_error
+        { 1, 1, 1, 1, 1, 1, 0, 1, 1, 1}, // 6: result
+        { 1, 1, 1, 1, 1, 1, 1, 0, 1, 1}, // 7: scoring
+        { 1, 1, 1, 1, 1, 1, 1, 1, 0, 1}, // 8: simd_gap
+        { 1, 1, 1, 1, 1, 1, 1, 1, 1, 0}  // 9: simd_scoring
     }
 };
 

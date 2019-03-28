@@ -1,2 +1,2 @@
-
 seqan3_benchmark(bit_manipulation_benchmark.cpp)
+seqan3_benchmark(simd_algorithm_benchmark.cpp)

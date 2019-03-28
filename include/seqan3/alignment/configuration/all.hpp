@@ -20,7 +20,11 @@
 #include <seqan3/alignment/configuration/align_config_mode.hpp>
 #include <seqan3/alignment/configuration/align_config_result.hpp>
 #include <seqan3/alignment/configuration/align_config_scoring.hpp>
+//!\cond DEV
+#include <seqan3/alignment/configuration/align_config_simd_gap.hpp>
+#include <seqan3/alignment/configuration/align_config_simd_scoring.hpp>
 #include <seqan3/alignment/configuration/detail.hpp>
+//!\endcond
 
 /*!\namespace seqan3::align_cfg
  * \brief A special sub namespace for the alignment configurations.

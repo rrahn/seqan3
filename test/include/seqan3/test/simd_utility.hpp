@@ -40,4 +40,31 @@
     { left_simd[i] = left[i]; right_simd[i] = right[i]; } \
     EXPECT_EQ(left_simd, right_simd); \
 } while (false)
+
+/*!\brief #SIMD_OR_SCALAR_EQ checks if the two types are equal either if both are simd or scalar types.
+ * \ingroup simd
+ * \param  left
+ * \param  right
+ *
+ * \attention
+ * This macro can handle multiple "," which is normally a limitation of macros.
+ *
+ */
+#define SIMD_OR_SCALAR_EQ(...) do {                                                             \
+    auto [left, right] = std::make_tuple(__VA_ARGS__);                                          \
+    if constexpr (seqan3::Simd<decltype(left)> && seqan3::Simd<decltype(right)>)                \
+    {                                                                                           \
+        using _simd_traits_t = seqan3::simd::simd_traits<decltype(left)>;                       \
+        std::vector<typename _simd_traits_t::scalar_type> left_simd(_simd_traits_t::length);    \
+        std::vector<typename _simd_traits_t::scalar_type> right_simd(_simd_traits_t::length);   \
+        for (size_t i = 0; i < _simd_traits_t::length; ++i)                                     \
+        { left_simd[i] = left[i]; right_simd[i] = right[i]; }                                   \
+        EXPECT_EQ(left_simd, right_simd);                                                       \
+    }                                                                                           \
+    else                                                                                        \
+    {                                                                                           \
+        EXPECT_EQ(left, right);                                                                 \
+    }                                                                                           \
+} while (false)
+
 //!\endcond

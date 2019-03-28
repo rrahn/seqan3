@@ -338,7 +338,7 @@ SEQAN3_CONCEPT WeaklyEqualityComparableWith =
         t == u; requires Boolean<decltype(t == u)>;
         t != u; requires Boolean<decltype(t != u)>;
         u == t; requires Boolean<decltype(u == t)>;
-        u != t; requires Boolean<decltype(u != t)>;
+        // u != t; requires Boolean<decltype(u != t)>;
     };
 //!\endcond
 } // namespace std::detail

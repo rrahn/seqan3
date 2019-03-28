@@ -6,7 +6,7 @@
 // -----------------------------------------------------------------------------------------------------
 
 /*!\file
- * \brief Provides seqan3::detail::alignment_algorithm.
+ * \brief Provides seqan3::detail::alignment_algorithm_simd.
  * \author Rene Rahn <rene.rahn AT fu-berlin.de>
  */
 
@@ -29,6 +29,7 @@
 #include <seqan3/core/metafunction/deferred_crtp_base.hpp>
 #include <seqan3/range/view/get.hpp>
 #include <seqan3/range/view/take_exactly.hpp>
+#include <seqan3/range/view/to_simd_chunk.hpp>
 #include <seqan3/std/concepts>
 #include <seqan3/std/iterator>
 #include <seqan3/std/ranges>
@@ -70,24 +71,32 @@ namespace seqan3::detail
  * correct alignment algorithm type.
  */
 template <typename config_t, typename ...algorithm_policies_t>
-class alignment_algorithm :
+class alignment_algorithm_simd :
     public invoke_deferred_crtp_base<algorithm_policies_t, alignment_algorithm<config_t, algorithm_policies_t...>>...
 {
 private:
 
+    static_assert(config_t::template exists<align_cfg::simd_scoring>(), "Expected that simd scoring scheme is set.");
+
+    using simd_scoring_t = std::remove_reference_t<decltype(get<align_cfg::simd_scoring>(std::declval<config_t &>()))>;
+    using simd_t         = typename simd_scoring_t::score_type;
+    using simd_vec_t     = typename std::vector<simd_t, aligned_allocator<simd_t, alignof(simd_t)>>;
+
     //!\brief Check if the alignment is banded.
-    static constexpr bool is_banded = std::remove_reference_t<config_t>::template exists<align_cfg::band>();
+    static constexpr bool is_banded    = config_t::template exists<align_cfg::band>();
+    //!\brief The batch size depending on the set scoring type.
+    static constexpr size_t batch_size = simd_traits<simd_t>::length;
 
 public:
     /*!\name Constructors, destructor and assignment
      * \{
      */
-    constexpr alignment_algorithm()                                        = default; //!< Defaulted
-    constexpr alignment_algorithm(alignment_algorithm const &)             = default; //!< Defaulted
-    constexpr alignment_algorithm(alignment_algorithm &&)                  = default; //!< Defaulted
-    constexpr alignment_algorithm & operator=(alignment_algorithm const &) = default; //!< Defaulted
-    constexpr alignment_algorithm & operator=(alignment_algorithm &&)      = default; //!< Defaulted
-    ~alignment_algorithm()                                                 = default; //!< Defaulted
+    constexpr alignment_algorithm()                                        = default; //!< Defaulted.
+    constexpr alignment_algorithm(alignment_algorithm const &)             = default; //!< Defaulted.
+    constexpr alignment_algorithm(alignment_algorithm &&)                  = default; //!< Defaulted.
+    constexpr alignment_algorithm & operator=(alignment_algorithm const &) = default; //!< Defaulted.
+    constexpr alignment_algorithm & operator=(alignment_algorithm &&)      = default; //!< Defaulted.
+    ~alignment_algorithm()                                                 = default; //!< Defaulted.
 
     /*!\brief Constructs the algorithm with the passed configuration.
      * \param cfg The configuration to be passed to the algorithm.
@@ -127,23 +136,45 @@ public:
      * The code always runs in \f$ O(N^2) \f$ time and depending on the configuration requires at least \f$ O(N) \f$
      * and at most \f$ O(N^2) \f$ space.
      */
-    template <std::ranges::ForwardRange first_range_t, std::ranges::ForwardRange second_range_t>
-    auto operator()(size_t const idx, first_range_t && first_range, second_range_t && second_range)
+    template <std::ranges::ForwardRange first_batch_t, std::ranges::ForwardRange second_batch_t>
+    auto operator()(size_t const idx, first_batch_t && first_batch, second_batch_t && second_batch)
         requires is_banded
     {
+        using first_range_t  = value_type_t<std::remove_reference_t<first_batch_t>>;
+        using second_range_t = value_type_t<std::remove_reference_t<second_batch_t>>;
+
+        static_assert(std::ranges::ForwardRange<value_type_t<first_seq_t>>,
+                      "Expected range over ranges for first sequence.")
+        static_assert(std::ranges::ForwardRange<value_type_t<second_seq_t>>,
+                      "Expected range over ranges for second sequence.")
+
+        // Contracts.
         assert(cfg_ptr != nullptr);
+        assert(std::ranges::distance(first_batch)  == batch_size);
+        assert(std::ranges::distance(second_batch) == batch_size);
+
+        // ----------------------------------------------------------------------------
+        // Sequence conversion.
+        // ----------------------------------------------------------------------------
+
+        // TODO: choose padding symbol
+        simd_vec_t simd_seq_first  = first_batch  | view::to_simd_chunk<simd_t> | std::view::join;
+        simd_vec_t simd_seq_second = second_batch | view::to_simd_chunk<simd_t> | std::view::join;
 
         // ----------------------------------------------------------------------------
         // Initialise dp algorithm.
         // ----------------------------------------------------------------------------
 
         // We need to allocate the score_matrix and maybe the trace_matrix.
-        this->allocate_matrix(first_range, second_range);
+        this->allocate_matrix(simd_seq_first, simd_seq_second);
 
         // Initialise cache variables to keep frequently used variables close to the CPU registers.
         // TODO: What if the gap scheme is not set?
-        auto cache = this->make_cache(cfg_ptr->template value_or<align_cfg::gap>(gap_scheme{gap_score{-1},
-                                                                                            gap_open_score{-10}}));
+        auto && gap_scheme = cfg_ptr->template value_or<align_cfg::gap>(gap_scheme{gap_score{-1}, gap_open_score{-10}});
+        auto && simd_gap_scheme = cfg_ptr->template value_or<align_cfg::simd_gap>(
+                                        simd_gap_scheme{std::forward<decltype(gap_scheme)>(gap_scheme)});
+
+        auto cache = this->make_cache(simd_gap_scheme);
 
         initialise_matrix(cache);
 
@@ -151,45 +182,51 @@ public:
         // Compute the unbanded alignment.
         // ----------------------------------------------------------------------------
 
-        compute_matrix(first_range, second_range, cache);
+        compute_matrix(simd_seq_first, simd_seq_second, cache);
 
         // ----------------------------------------------------------------------------
         // Cleanup and prepare the alignment result.
         // ----------------------------------------------------------------------------
 
         using result_t = typename align_result_selector<first_range_t, second_range_t, config_t>::type;
-        result_t res{};
+        std::vector<alignment_result<result_t>> res_vec;
+        res_vec.reserve(batch_size);
 
-        res.id = idx;
-        // Choose what needs to be computed.
-        if constexpr (config_t::template exists<align_cfg::result<with_score_type>>())
+        for (unsigned i = 0; i < batch_size; ++i)
         {
-            res.score = get<3>(cache).score;
+            result_t res;
+            res.id = idx[i];
+            // Choose what needs to be computed.
+            if constexpr (config_t::template exists<align_cfg::result<with_score_type>>())
+            {
+                res.score = get<3>(cache).score[i];
+            }
+            if constexpr (config_t::template exists<align_cfg::result<with_back_coordinate_type>>())
+            {
+                res.score = get<3>(cache).score[i];
+                res.back_coordinate = get<3>(cache).coordinate[i];
+            }
+            if constexpr (config_t::template exists<align_cfg::result<with_front_coordinate_type>>())
+            { // At the moment we also compute the traceback even if only the front coordinate was requested.
+              // This can be later optimised by computing the reverse alignment in a narrow band in linear memory.
+              // Especially for the SIMD version this might be more efficient.
+                res.score = get<3>(cache).score[i];
+                res.back_coordinate = get<3>(cache).coordinate[i];
+                res.front_coordinate = get<0>(compute_traceback(first_batch[i],
+                                                                second_batch[i],
+                                                                get<3>(cache).coordinate[i]));
+            }
+            if constexpr (config_t::template exists<align_cfg::result<with_alignment_type>>())
+            {
+                res.score = get<3>(cache).score[i];
+                res.back_coordinate = get<3>(cache).coordinate[i];
+                std::tie(res.front_coordinate, res.alignment) = compute_traceback(first_batch[i],
+                                                                                  second_batch[i],
+                                                                                  get<3>(cache).coordinate[i]);
+            }
+            res_vec.emplace_back(res);
         }
-        if constexpr (config_t::template exists<align_cfg::result<with_back_coordinate_type>>())
-        {
-            res.score = get<3>(cache).score;
-            res.back_coordinate = get<3>(cache).coordinate;
-        }
-        if constexpr (config_t::template exists<align_cfg::result<with_front_coordinate_type>>())
-        { // At the moment we also compute the traceback even if only the front coordinate was requested.
-          // This can be later optimised by computing the reverse alignment in a narrow band in linear memory.
-          // Especially for the SIMD version this might be more efficient.
-            res.score = get<3>(cache).score;
-            res.back_coordinate = get<3>(cache).coordinate;
-            res.front_coordinate = get<0>(compute_traceback(first_range,
-                                                            second_range,
-                                                            get<3>(cache).coordinate));
-        }
-        if constexpr (config_t::template exists<align_cfg::result<with_alignment_type>>())
-        {
-            res.score = get<3>(cache).score;
-            res.back_coordinate = get<3>(cache).coordinate;
-            std::tie(res.front_coordinate, res.alignment) = compute_traceback(first_range,
-                                                                              second_range,
-                                                                              get<3>(cache).coordinate);
-        }
-        return alignment_result{res};
+        return res_vec;
     }
 
     /*!\brief Invokes the banded alignment computation given two sequences.
@@ -220,113 +257,113 @@ public:
      * The code always runs in \f$ O(N*k) \f$ time and depending on the configuration requires at least \f$ O(k) \f$
      * and at most \f$ O(N*k) \f$ space.
      */
-    template <std::ranges::ForwardRange first_range_t, std::ranges::ForwardRange second_range_t>
-    auto operator()(size_t const idx, first_range_t && first_range, second_range_t && second_range)
-        requires is_banded
-    {
-        assert(cfg_ptr != nullptr);
-
-        using std::get;
-
-        static_assert(config_t::template exists<align_cfg::band>(),
-                      "The band configuration is required for the banded alignment algorithm.");
-        auto const & band = get<align_cfg::band>(*cfg_ptr).value;
-
-        // ----------------------------------------------------------------------------
-        // Check valid band settings.
-        // ----------------------------------------------------------------------------
-
-        using diff_type = typename std::iterator_traits<std::ranges::iterator_t<first_range_t>>::difference_type;
-        static_assert(std::is_signed_v<diff_type>,  "Only signed types can be used to test the band parameters.");
-
-        if (static_cast<diff_type>(band.lower_bound) > std::ranges::distance(first_range))
-        {
-            throw invalid_alignment_configuration
-            {
-                "Invalid band error: The lower bound excludes the whole alignment matrix."
-            };
-        }
-
-        if (static_cast<diff_type>(band.upper_bound) < -std::ranges::distance(second_range))
-        {
-            throw invalid_alignment_configuration
-            {
-                "Invalid band error: The upper bound excludes the whole alignment matrix."
-            };
-        }
-
-        // ----------------------------------------------------------------------------
-        // Initialise dp algorithm.
-        // ----------------------------------------------------------------------------
-
-        // Trim the sequences according to special band settings.
-        auto [trimmed_first_range, trimmed_second_range] =
-            this->trim_sequences(first_range, second_range, band);
-
-        this->allocate_matrix(trimmed_first_range, trimmed_second_range, band);
-
-        // Use default gap if not set from outside.
-        auto const & gap = cfg_ptr->template value_or<align_cfg::gap>(gap_scheme{gap_score{-1}, gap_open_score{-10}});
-
-        // Initialise cache variables to keep frequently used variables close to the CPU registers.
-        auto cache = this->make_cache(gap);
-
-        initialise_matrix(cache);
-
-        // ----------------------------------------------------------------------------
-        // Compute the banded alignment.
-        // ----------------------------------------------------------------------------
-
-        compute_banded_matrix(trimmed_first_range, trimmed_second_range, cache);
-
-        // ----------------------------------------------------------------------------
-        // Cleanup and optionally compute the traceback.
-        // ----------------------------------------------------------------------------
-
-        using result_t = typename align_result_selector<first_range_t, second_range_t, config_t>::type;
-        result_t res{};
-
-        res.id = idx;
-        // Balance the score with possible leading/trailing gaps depending on the
-        // band settings.
-        this->balance_leading_gaps(get<3>(cache), band, gap);
-
-        this->balance_trailing_gaps(get<3>(cache),
-                                    this->dimension_first_range,
-                                    this->dimension_second_range,
-                                    band,
-                                    gap);
-
-        if constexpr (config_t::template exists<align_cfg::result<detail::with_score_type>>())
-        {
-            res.score = get<3>(cache).score;
-        }
-        if constexpr (config_t::template exists<align_cfg::result<with_back_coordinate_type>>())
-        {
-            res.score = get<3>(cache).score;
-            res.back_coordinate = this->map_banded_coordinate_to_range_position(get<3>(cache).coordinate);
-        }
-        if constexpr (config_t::template exists<align_cfg::result<with_front_coordinate_type>>())
-        { // At the moment we also compute the traceback even if only the front coordinate was requested.
-          // This can be later optimised by computing the reverse alignment in linear memory from the maximum.
-          // Especially for the SIMD version this might be more efficient.
-            res.score = get<3>(cache).score;
-            res.back_coordinate = this->map_banded_coordinate_to_range_position(get<3>(cache).coordinate);
-            res.front_coordinate =
-                get<0>(compute_traceback(first_range,
-                                         second_range,
-                                         get<3>(cache).coordinate));
-        }
-        if constexpr (config_t::template exists<align_cfg::result<with_alignment_type>>())
-        {
-            res.score = get<3>(cache).score;
-            res.back_coordinate = this->map_banded_coordinate_to_range_position(get<3>(cache).coordinate);
-            std::tie(res.front_coordinate, res.alignment) = compute_traceback(first_range,
-                                                                              second_range,
-                                                                              get<3>(cache).coordinate);
-        }
-        return alignment_result{res};
-    }
+    // template <std::ranges::ForwardRange first_range_t, std::ranges::ForwardRange second_range_t>
+    // auto operator()(size_t const idx, first_range_t && first_range, second_range_t && second_range)
+    //     requires is_banded
+    // {
+    //     assert(cfg_ptr != nullptr);
+    //
+    //     using std::get;
+    //
+    //     static_assert(config_t::template exists<align_cfg::band>(),
+    //                   "The band configuration is required for the banded alignment algorithm.");
+    //     auto const & band = get<align_cfg::band>(*cfg_ptr).value;
+    //
+    //     // ----------------------------------------------------------------------------
+    //     // Check valid band settings.
+    //     // ----------------------------------------------------------------------------
+    //
+    //     using diff_type = typename std::iterator_traits<std::ranges::iterator_t<first_range_t>>::difference_type;
+    //     static_assert(std::is_signed_v<diff_type>,  "Only signed types can be used to test the band parameters.");
+    //
+    //     if (static_cast<diff_type>(band.lower_bound) > std::ranges::distance(first_range))
+    //     {
+    //         throw invalid_alignment_configuration
+    //         {
+    //             "Invalid band error: The lower bound excludes the whole alignment matrix."
+    //         };
+    //     }
+    //
+    //     if (static_cast<diff_type>(band.upper_bound) < -std::ranges::distance(second_range))
+    //     {
+    //         throw invalid_alignment_configuration
+    //         {
+    //             "Invalid band error: The upper bound excludes the whole alignment matrix."
+    //         };
+    //     }
+    //
+    //     // ----------------------------------------------------------------------------
+    //     // Initialise dp algorithm.
+    //     // ----------------------------------------------------------------------------
+    //
+    //     // Trim the sequences according to special band settings.
+    //     auto [trimmed_first_range, trimmed_second_range] =
+    //         this->trim_sequences(first_range, second_range, band);
+    //
+    //     this->allocate_matrix(trimmed_first_range, trimmed_second_range, band);
+    //
+    //     // Use default gap if not set from outside.
+    //     auto const & gap = cfg_ptr->template value_or<align_cfg::gap>(gap_scheme{gap_score{-1}, gap_open_score{-10}});
+    //
+    //     // Initialise cache variables to keep frequently used variables close to the CPU registers.
+    //     auto cache = this->make_cache(gap);
+    //
+    //     initialise_matrix(cache);
+    //
+    //     // ----------------------------------------------------------------------------
+    //     // Compute the banded alignment.
+    //     // ----------------------------------------------------------------------------
+    //
+    //     compute_banded_matrix(trimmed_first_range, trimmed_second_range, cache);
+    //
+    //     // ----------------------------------------------------------------------------
+    //     // Cleanup and optionally compute the traceback.
+    //     // ----------------------------------------------------------------------------
+    //
+    //     using result_t = typename align_result_selector<first_range_t, second_range_t, config_t>::type;
+    //     result_t res{};
+    //
+    //     res.id = idx;
+    //     // Balance the score with possible leading/trailing gaps depending on the
+    //     // band settings.
+    //     this->balance_leading_gaps(get<3>(cache), band, gap);
+    //
+    //     this->balance_trailing_gaps(get<3>(cache),
+    //                                 this->dimension_first_range,
+    //                                 this->dimension_second_range,
+    //                                 band,
+    //                                 gap);
+    //
+    //     if constexpr (config_t::template exists<align_cfg::result<detail::with_score_type>>())
+    //     {
+    //         res.score = get<3>(cache).score;
+    //     }
+    //     if constexpr (config_t::template exists<align_cfg::result<with_back_coordinate_type>>())
+    //     {
+    //         res.score = get<3>(cache).score;
+    //         res.back_coordinate = this->map_banded_coordinate_to_range_position(get<3>(cache).coordinate);
+    //     }
+    //     if constexpr (config_t::template exists<align_cfg::result<with_front_coordinate_type>>())
+    //     { // At the moment we also compute the traceback even if only the front coordinate was requested.
+    //       // This can be later optimised by computing the reverse alignment in linear memory from the maximum.
+    //       // Especially for the SIMD version this might be more efficient.
+    //         res.score = get<3>(cache).score;
+    //         res.back_coordinate = this->map_banded_coordinate_to_range_position(get<3>(cache).coordinate);
+    //         res.front_coordinate =
+    //             get<0>(compute_traceback(first_range,
+    //                                      second_range,
+    //                                      get<3>(cache).coordinate));
+    //     }
+    //     if constexpr (config_t::template exists<align_cfg::result<with_alignment_type>>())
+    //     {
+    //         res.score = get<3>(cache).score;
+    //         res.back_coordinate = this->map_banded_coordinate_to_range_position(get<3>(cache).coordinate);
+    //         std::tie(res.front_coordinate, res.alignment) = compute_traceback(first_range,
+    //                                                                           second_range,
+    //                                                                           get<3>(cache).coordinate);
+    //     }
+    //     return alignment_result{res};
+    // }
 
 private:
 

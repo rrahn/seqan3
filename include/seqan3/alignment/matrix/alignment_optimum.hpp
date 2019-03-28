@@ -17,6 +17,7 @@
 #include <seqan3/alignment/matrix/alignment_coordinate.hpp>
 #include <seqan3/core/concept/core_language.hpp>
 #include <seqan3/core/metafunction/template_inspection.hpp>
+#include <seqan3/core/simd/concept.hpp>
 #include <seqan3/std/concepts>
 
 namespace seqan3::detail
@@ -24,20 +25,41 @@ namespace seqan3::detail
 
 /*!\brief Stores the current optimum of the alignment algorithms.
  * \ingroup alignment_matrix
- * \tparam score_t The type of the tracked alignment score.
+ * \tparam score_t The type of the tracked alignment score; must model seqan3::Arithmetic or seqan3::Simd.
  *
  * \details
  *
  * This is an aggregate type, so the score needs to be passed before the seqan3::alignment_coordinate during
  * construction.
  */
-template <Arithmetic score_t>
+template <typename score_t>
+//!\cond
+    requires Arithmetic<score_t> || Simd<score_t>
+//!\endcond
 struct alignment_optimum
 {
     //!\brief The optimal score.
-    score_t score{std::numeric_limits<score_t>::lowest()};
+    score_t score;
     //!\brief The corresponding coordinate within the alignment matrix.
-    alignment_coordinate coordinate{};
+    alignment_coordinate<score_t> coordinate;
+
+    constexpr friend alignment_optimum<score_t> max(alignment_optimum const & lhs, alignment_optimum const & rhs) noexcept
+    {
+        if constexpr (Simd<score_t>)
+        {
+            alignment_optimum<score_t> tmp{};
+            auto mask = lhs.score < rhs.score;
+            tmp.score = (mask) ? rhs.score : lhs.score;
+            tmp.coordinate.first = (mask) ? rhs.coordinate.first : lhs.coordinate.first;
+            tmp.coordinate.second = (mask) ? rhs.coordinate.second : lhs.coordinate.second;
+
+            return tmp;
+        }
+        else
+        {
+            return (lhs.score < rhs.score) ? rhs : lhs;
+        }
+    }
 };
 
 /*!\name Type deduction guides
@@ -47,9 +69,11 @@ struct alignment_optimum
 alignment_optimum() -> alignment_optimum<int32_t>;
 
 //!\brief Deduce the score type.
-template <Arithmetic score_t>
-alignment_optimum(score_t const, alignment_coordinate const) ->
-    alignment_optimum<std::remove_reference_t<score_t>>;
+template <typename score_t>
+//!\cond
+    requires Arithmetic<score_t> || Simd<score_t>
+//!\endcond
+alignment_optimum(score_t const &, alignment_coordinate<score_t> const &) -> alignment_optimum<score_t>;
 //!\}
 
 /*!\brief A less than comparator for two seqan3::detail::alignment_optimum objects.
@@ -82,6 +106,7 @@ struct alignment_optimum_compare_less
     {
         return lhs.score < rhs.score;
     }
+
 };
 
 } // namespace seqan3::detail

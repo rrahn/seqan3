@@ -14,8 +14,12 @@
 
 #include <type_traits>
 
+#include <seqan3/alignment/detail/misc.hpp>
 #include <seqan3/core/debug_stream.hpp>
 #include <seqan3/core/detail/strong_type.hpp>
+#include <seqan3/core/simd/concept.hpp>
+#include <seqan3/core/simd/simd_debug_stream.hpp>
+#include <seqan3/core/simd/simd_traits.hpp>
 #include <seqan3/std/concepts>
 #include <seqan3/std/iterator>
 
@@ -72,17 +76,23 @@ enum struct advanceable_alignment_coordinate_state : uint8_t
  * This, however, can be relaxed if the range implementation fully complies with the current standard draft for Ranges,
  * as increment and decrement would be enough and std::view::iota would preserve std::ranges::BidirectionalRange.
  */
-template <advanceable_alignment_coordinate_state state = advanceable_alignment_coordinate_state::none>
+template <typename value_t, advanceable_alignment_coordinate_state state = advanceable_alignment_coordinate_state::none>
+//!\cond
+    requires (Arithmetic<value_t>) || (Simd<value_t>)
+//!\endcond
 class advanceable_alignment_coordinate
 {
 public:
+
+    static_assert(std::Integral<value_t> || Simd<value_t>, "Expected integral or simd type.");
 
     /*!\name Member types
      * \{
      */
 
     //!\brief Defines the difference type to model the std::WeaklyIncrementable concept.
-    using difference_type = std::make_signed_t<size_t>;
+    using difference_type = std::ptrdiff_t;
+
     //!\}
 
     /*!\name Constructors, destructor and assignment
@@ -103,7 +113,7 @@ public:
     //!\cond
         requires !std::Same<other_state, state>
     //!\endcond
-    constexpr advanceable_alignment_coordinate(advanceable_alignment_coordinate<other_state> const & other) :
+    constexpr advanceable_alignment_coordinate(advanceable_alignment_coordinate<value_t, other_state> const & other) :
         first{other.first},
         second{other.second}
     {}
@@ -113,7 +123,7 @@ public:
     //!\cond
         requires !std::Same<other_state, state>
     //!\endcond
-    constexpr advanceable_alignment_coordinate(advanceable_alignment_coordinate<other_state> && other) :
+    constexpr advanceable_alignment_coordinate(advanceable_alignment_coordinate<value_t, other_state> && other) :
         first{std::move(other.first)},
         second{std::move(other.second)}
     {}
@@ -124,8 +134,8 @@ public:
      */
     constexpr advanceable_alignment_coordinate(column_index_type const c_idx,
                                                row_index_type const r_idx) noexcept :
-        first{c_idx.get()},
-        second{r_idx.get()}
+        first{to_simd_if<value_t>(c_idx.get())},
+        second{to_simd_if<value_t>(r_idx.get())}
     {}
     //!\}
 
@@ -133,37 +143,52 @@ public:
     constexpr friend bool operator==(advanceable_alignment_coordinate const & lhs,
                                      advanceable_alignment_coordinate const & rhs) noexcept
     {
-        return std::tie(lhs.first, lhs.second) == std::tie(rhs.first, rhs.second);
+        if constexpr (Simd<value_t>)
+            return test_all_ones(lhs.first == rhs.first) && test_all_ones(lhs.second == rhs.second);
+        else
+            return std::tie(lhs.first, lhs.second) == std::tie(rhs.first, rhs.second);
     }
 
     constexpr friend bool operator!=(advanceable_alignment_coordinate const & lhs,
                                      advanceable_alignment_coordinate const & rhs) noexcept
     {
-        return std::tie(lhs.first, lhs.second) != std::tie(rhs.first, rhs.second);
+        return !(lhs == rhs);
     }
 
     constexpr friend bool operator<=(advanceable_alignment_coordinate const & lhs,
                                      advanceable_alignment_coordinate const & rhs) noexcept
     {
-        return std::tie(lhs.first, lhs.second) <= std::tie(rhs.first, rhs.second);
+        if constexpr (Simd<value_t>)
+            return test_all_ones(lhs.first <= rhs.first) && test_all_ones(lhs.second <= rhs.second);
+        else
+            return std::tie(lhs.first, lhs.second) <= std::tie(rhs.first, rhs.second);
     }
 
-    constexpr friend bool operator< (advanceable_alignment_coordinate const & lhs,
-                                     advanceable_alignment_coordinate const & rhs) noexcept
+    constexpr friend bool operator<(advanceable_alignment_coordinate const & lhs,
+                                    advanceable_alignment_coordinate const & rhs) noexcept
     {
-        return std::tie(lhs.first, lhs.second) < std::tie(rhs.first, rhs.second);
+        if constexpr (Simd<value_t>)
+            return test_all_ones(lhs.first < rhs.first) && test_all_ones(lhs.second < rhs.second);
+        else
+            return std::tie(lhs.first, lhs.second) < std::tie(rhs.first, rhs.second);
     }
 
     constexpr friend bool operator>=(advanceable_alignment_coordinate const & lhs,
                                      advanceable_alignment_coordinate const & rhs) noexcept
     {
-        return std::tie(lhs.first, lhs.second) >= std::tie(rhs.first, rhs.second);
+        if constexpr (Simd<value_t>)
+            return test_all_ones(lhs.first >= rhs.first) && test_all_ones(lhs.second >= rhs.second);
+        else
+            return std::tie(lhs.first, lhs.second) >= std::tie(rhs.first, rhs.second);
     }
 
-    constexpr friend bool operator> (advanceable_alignment_coordinate const & lhs,
-                                     advanceable_alignment_coordinate const & rhs) noexcept
+    constexpr friend bool operator>(advanceable_alignment_coordinate const & lhs,
+                                    advanceable_alignment_coordinate const & rhs) noexcept
     {
-        return std::tie(lhs.first, lhs.second) > std::tie(rhs.first, rhs.second);
+        if constexpr (Simd<value_t>)
+            return test_all_ones(lhs.first > rhs.first) && test_all_ones(lhs.second > rhs.second);
+        else
+            return std::tie(lhs.first, lhs.second) > std::tie(rhs.first, rhs.second);
     }
      //!\endcond
 
@@ -240,9 +265,9 @@ public:
     //!\endcond
     {
         if constexpr (state == advanceable_alignment_coordinate_state::column)
-            this->first += offset;
+            this->first += to_simd_if<value_t>(offset);
         else
-            this->second += offset;
+            this->second += to_simd_if<value_t>(offset);
         return *this;
     }
 
@@ -256,9 +281,9 @@ public:
     //!\endcond
     {
         if constexpr (state == advanceable_alignment_coordinate_state::column)
-            this->first -= offset;
+            this->first -= to_simd_if<value_t>(offset);
         else
-            this->second -= offset;
+            this->second -= to_simd_if<value_t>(offset);
         return *this;
     }
 
@@ -299,10 +324,20 @@ public:
         requires state != advanceable_alignment_coordinate_state::none
     //!\endcond
     {
-        if constexpr (state == advanceable_alignment_coordinate_state::column)
-            return this->first - other.first;
+        if constexpr (Simd<value_t>)
+        {
+            if constexpr (state == advanceable_alignment_coordinate_state::column)
+                return this->first[0] - other.first[0];
+            else
+                return this->second[0] - other.second[0];
+        }
         else
-            return this->second - other.second;
+        {
+            if constexpr (state == advanceable_alignment_coordinate_state::column)
+                return this->first - other.first;
+            else
+                return this->second - other.second;
+        }
     }
     //!\}
 
@@ -323,10 +358,20 @@ public:
     //!\}
 
     //!\brief The front/back position of the alignment in the first sequence.
-    size_t first{};
+    value_t first{};
     //!\brief The front/back position of the alignment in the second sequence.
-    size_t second{};
+    value_t second{};
 };
+
+/*!\name Type deduction guides
+ * \{
+ */
+
+advanceable_alignment_coordinate() -> advanceable_alignment_coordinate<size_t>;
+
+advanceable_alignment_coordinate(column_index_type const &,
+                                 row_index_type const &) -> advanceable_alignment_coordinate<size_t>;
+//!\}
 
 } // namespace seqan3::detail
 
@@ -346,14 +391,19 @@ namespace seqan3
  * benefit as they are only interested in the front/back coordinates for the respective alignment.
  * \endif
  */
+template <typename value_t>
+//!\cond
+    requires (Arithmetic<value_t>) || (Simd<value_t>)
+//!\endcond
 class alignment_coordinate
 //!\cond DEV
-    : public detail::advanceable_alignment_coordinate<detail::advanceable_alignment_coordinate_state::none>
+    : public detail::advanceable_alignment_coordinate<value_t, detail::advanceable_alignment_coordinate_state::none>
 //!\endcond
 {
     //!\cond DEV
     //!\brief The type of the base class.
-    using base_t = detail::advanceable_alignment_coordinate<detail::advanceable_alignment_coordinate_state::none>;
+    using base_t = detail::advanceable_alignment_coordinate<value_t,
+                                                            detail::advanceable_alignment_coordinate_state::none>;
     //!\endcond
 
 public:
@@ -386,31 +436,51 @@ public:
     using base_t::second;
 
     //!\brief The begin/end position of the alignment in the first sequence.
-    SEQAN3_DOXYGEN_ONLY(size_t first;)
+    SEQAN3_DOXYGEN_ONLY(value_t first;)
     //!\brief The begin/end position of the alignment in the second sequence.
-    SEQAN3_DOXYGEN_ONLY(size_t second;)
+    SEQAN3_DOXYGEN_ONLY(value_t second;)
 };
 
+/*!\name Type deduction guides
+ * \{
+ */
+
+alignment_coordinate() -> alignment_coordinate<size_t>;
+
+alignment_coordinate(detail::column_index_type const &, detail::row_index_type const &) -> alignment_coordinate<size_t>;
+//!\}
+
 /*!\brief A seqan3::alignment_coordinate can be printed to the seqan3::debug_stream.
- * \tparam    coordinate_type The alignment coordinate type.
- * \param[in] s               The seqan3::debug_stream.
- * \param[in] c               The alignment coordinate to print.
+ * \param[in] s       The seqan3::debug_stream.
+ * \param[in] c       The alignment coordinate to print.
  * \relates seqan3::debug_stream_type
  *
  * \details
  *
  * Prints the alignment coordinate as a tuple.
  */
-template <typename coordinate_type>
+template <typename coordinate_t>
 //!\cond
-    requires std::Same<remove_cvref_t<coordinate_type>, alignment_coordinate> ||
-             detail::is_value_specialisation_of_v<remove_cvref_t<coordinate_type>,
-                                                  detail::advanceable_alignment_coordinate>
+    requires detail::is_type_specialisation_of_v<coordinate_t, alignment_coordinate>
 //!\endcond
-inline debug_stream_type & operator<<(debug_stream_type & s, coordinate_type && c)
+inline debug_stream_type & operator<<(debug_stream_type & s, coordinate_t && c)
 {
     s << std::tie(c.first, c.second);
     return s;
 }
 
+//!\cond DEV
+//!\overload
+// template <typename coordinate_t>
+// inline debug_stream_type & operator<<(debug_stream_type & s,
+//                                       detail::advanceable_alignment_coordinate<value_t, state> & c)
+// {
+//     if constexpr (Simd<value_t>)
+//         s << "(" << c.first << ", " << c.second << ")";
+//     else
+//         s << std::tie(c.first, c.second);
+//
+//     return s;
+// }
+//!\endcond
 } // namespace seqan3

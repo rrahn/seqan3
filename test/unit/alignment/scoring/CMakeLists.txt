@@ -1,0 +1,2 @@
+seqan3_test(gap_scheme_simd_wrapper_test.cpp)
+seqan3_test(simd_scoring_scheme_simple_test.cpp)

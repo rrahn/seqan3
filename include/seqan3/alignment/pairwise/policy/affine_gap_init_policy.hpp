@@ -15,6 +15,8 @@
 #include <tuple>
 
 #include <seqan3/alignment/matrix/trace_directions.hpp>
+#include <seqan3/alignment/detail/misc.hpp>
+#include <seqan3/core/metafunction/basic.hpp>
 
 namespace seqan3::detail
 {
@@ -75,31 +77,34 @@ private:
         auto & prev_cell = get<0>(cache);
         auto & vt_score = get<1>(prev_cell);
 
-        main_score = 0;
+        using score_t = std::remove_reference_t<decltype(main_score)>;
+        using trace_t = std::remove_reference_t<decltype(hz_trace)>;
+
+        main_score = score_t{0};
         get<2>(current_cell) = trace_directions::none; // store the trace direction
 
         // Initialise the vertical matrix cell according to the traits settings.
         if constexpr (traits_type::free_second_leading_t::value)
         {
-            vt_score = 0;
-            get<2>(prev_cell) = trace_directions::none;  // cache vertical trace
+            vt_score = detail::to_simd_if<score_t>(0);
+            get<2>(prev_cell) = detail::to_simd_if<trace_t>(trace_directions::none);  // cache vertical trace
         }
         else
         {
             vt_score = get<1>(cache);
-            get<2>(prev_cell) = trace_directions::up_open; // cache vertical trace
+            get<2>(prev_cell) = detail::to_simd_if<trace_t>(trace_directions::up_open); // cache vertical trace
         }
 
         // Initialise the horizontal matrix cell according to the traits settings.
         if constexpr (traits_type::free_first_leading_t::value)
         {
-            hz_score = 0;
-            hz_trace = trace_directions::none; // cache horizontal trace
+            hz_score = score_t{0};
+            hz_trace = detail::to_simd_if<trace_t>(trace_directions::none); // cache horizontal trace
         }
         else
         {
             hz_score = get<1>(cache);
-            hz_trace = trace_directions::left_open; // cache horizontal trace
+            hz_trace = to_simd_if<trace_t>(trace_directions::left_open); // cache horizontal trace
         }
     }
 
@@ -118,23 +123,26 @@ private:
         auto & prev_cell = get<0>(cache);
         auto & vt_score = get<1>(prev_cell);
 
+        using score_t = std::remove_reference_t<decltype(main_score)>;
+        using trace_t = std::remove_reference_t<decltype(hz_trace)>;
+
         main_score = vt_score;
         get<2>(current_cell) = get<2>(prev_cell); // store the trace direction
 
         // Initialise the vertical matrix cell according to the traits settings.
         if constexpr (traits_type::free_second_leading_t::value)
         {
-            vt_score = 0;
-            get<2>(prev_cell) = trace_directions::none; // cache vertical trace
+            vt_score = to_simd_if<score_t>(0);
+            get<2>(prev_cell) = to_simd_if<trace_t>(trace_directions::none); // cache vertical trace
         }
         else
         {
             vt_score += get<2>(cache);
-            get<2>(prev_cell) = trace_directions::up; // cache vertical trace
+            get<2>(prev_cell) = to_simd_if<trace_t>(trace_directions::up); // cache vertical trace
         }
 
         hz_score = main_score + get<1>(cache);
-        hz_trace = trace_directions::left_open;  // cache horizontal trace
+        hz_trace = to_simd_if<trace_t>(trace_directions::left_open);  // cache horizontal trace
     }
 
     /*!\brief Initialises a cell in the first row of the dynamic programming matrix.
@@ -151,22 +159,25 @@ private:
         auto & [main_score, hz_score, hz_trace] = get<0>(current_cell);
         auto & [prev_score, vt_score, vt_trace] = get<0>(cache);
 
+        using score_t = std::remove_reference_t<decltype(main_score)>;
+        using trace_t = std::remove_reference_t<decltype(hz_trace)>;
+
         prev_score = main_score;
         main_score = hz_score;
         get<2>(current_cell) = hz_trace; // store the trace direction
 
         vt_score += main_score + get<1>(cache);
-        vt_trace = trace_directions::up_open; // cache vertical trace
+        vt_trace = detail::to_simd_if<trace_t>(trace_directions::up_open); // cache vertical trace
         // Initialise the horizontal matrix cell according to the traits settings.
         if constexpr (traits_type::free_first_leading_t::value)
         {
-            hz_score = 0;
-            hz_trace = trace_directions::none;
+            hz_score = score_t{0};
+            hz_trace = detail::to_simd_if<trace_t>(trace_directions::none);
         }
         else
         {
             hz_score += get<2>(cache);
-            hz_trace = trace_directions::left;
+            hz_trace = detail::to_simd_if<trace_t>(trace_directions::left);
         }
     }
 };
