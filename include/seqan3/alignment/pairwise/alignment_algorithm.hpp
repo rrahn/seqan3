@@ -193,6 +193,12 @@ public:
         return results;
     }
 
+    template <std::ranges::forward_range sequence1_t, std::ranges::forward_range sequence2_t>
+    auto operator()(size_t const index, sequence1_t && seq1, sequence2_t && seq2)
+    {
+        return alignment_result{compute_single_pair(index, seq1, seq2)};
+    }
+
     //!\overload
     template <indexed_sequence_pair_range indexed_sequence_pairs_t>
     auto operator()(indexed_sequence_pairs_t && indexed_sequence_pairs)
@@ -280,27 +286,27 @@ private:
     {
         assert(cfg_ptr != nullptr);
 
-        if constexpr (traits_t::is_debug)
-            initialise_debug_matrices(sequence1, sequence2);
+        // if constexpr (traits_t::is_debug)
+        //     initialise_debug_matrices(sequence1, sequence2);
 
         // Reset the alignment state's optimum between executions of the alignment algorithm.
         this->alignment_state.reset_optimum();
 
-        if constexpr (traits_t::is_banded)
-        {
-            // Get the band and check if band configuration is valid.
-            auto const & band = seqan3::get<align_cfg::band>(*cfg_ptr).value;
-            check_valid_band_parameter(sequence1, sequence2, band);
-            auto && [subsequence1, subsequence2] = this->slice_sequences(sequence1, sequence2, band);
-            // It would be great to use this interface here instead
-            compute_matrix(subsequence1, subsequence2, band);
-            return make_alignment_result(idx, subsequence1, subsequence2);
-        }
-        else
-        {
+        // if constexpr (traits_t::is_banded)
+        // {
+        //     // Get the band and check if band configuration is valid.
+        //     auto const & band = seqan3::get<align_cfg::band>(*cfg_ptr).value;
+        //     check_valid_band_parameter(sequence1, sequence2, band);
+        //     auto && [subsequence1, subsequence2] = this->slice_sequences(sequence1, sequence2, band);
+        //     // It would be great to use this interface here instead
+        //     compute_matrix(subsequence1, subsequence2, band);
+        //     return make_alignment_result(idx, subsequence1, subsequence2);
+        // }
+        // else
+        // {
             compute_matrix(sequence1, sequence2);
             return make_alignment_result(idx, sequence1, sequence2);
-        }
+        // }
     }
 
     /*!\brief Checks if the band parameters are valid for the given sequences.
@@ -382,28 +388,88 @@ private:
         requires !traits_t::is_banded
     //!\endcond
     {
+        using score_t = typename traits_t::score_t;
+
+        score_t diagonal{};
+        score_t vertical{};
+        score_t gap_open{this->alignment_state.gap_open_score};
+        score_t gap_extension{this->alignment_state.gap_extension_score};
+
         // ----------------------------------------------------------------------------
         // Initialisation phase: allocate memory and initialise first column.
         // ----------------------------------------------------------------------------
 
         this->allocate_matrix(sequence1, sequence2);
-        initialise_first_alignment_column(sequence2);
+        // initialise_first_alignment_column(sequence2);
+
+        vertical = gap_open;
+        // initialise the first column.
+        for (auto && [opt, hor] : seqan3::views::zip(this->score_matrix.one_score_column, this->score_matrix.one_horizontal_column) | seqan3::views::drop(1))
+        {
+            opt = vertical;
+            hor = opt + gap_open;
+            vertical += gap_extension;
+        }
 
         // ----------------------------------------------------------------------------
         // Recursion phase: compute column-wise the alignment matrix.
         // ----------------------------------------------------------------------------
 
-        for (auto const & seq1_value : sequence1)
+        // Compute the matrix
+        for (auto it_col = sequence1.begin(); it_col != sequence1.end(); ++it_col)
         {
-            compute_alignment_column<true>(seq1_value, sequence2);
-            finalise_last_cell_in_column(true);
+            // Initialise first cell of optimal_column.
+            auto opt_it = this->score_matrix.one_score_column.begin();
+            auto hor_it = this->score_matrix.one_horizontal_column.begin();
+
+            diagonal = *opt_it;  // cache the diagonal for next cell
+            *opt_it = gap_open + gap_extension * (it_col - sequence1.begin()); // initialise the horizontal score
+            *hor_it = *opt_it; // initialise the horizontal score
+            vertical = *opt_it + gap_open; // initialise the vertical value
+            // std::cout << "vert: " << *opt_it << "\n";
+            // Go to next cell.
+            ++opt_it;
+            ++hor_it;
+            // std::cout << "diagonal: ";
+            for (auto it_row = sequence2.begin(); it_row != sequence2.end(); ++it_row, ++opt_it, ++hor_it)
+            {
+                // Precompute the diagonal score.
+                int32_t tmp = diagonal + this->scoring_scheme.score(*it_col, *it_row);
+                // std::cout << diagonal << ": " <<   tmp << " ";
+
+                tmp = (tmp < vertical) ? vertical : tmp;
+                tmp = (tmp < *hor_it) ? *hor_it : tmp;
+
+                // Store the current max score.
+                diagonal = *opt_it; // cache the next diagonal before writing it
+                *opt_it = tmp; // store the temporary result
+
+                tmp += gap_open;  // add gap open costs
+                vertical += gap_extension;
+                *hor_it += gap_extension;
+
+                // store the vertical and horizontal value in the next path
+                vertical = (vertical < tmp) ? tmp : vertical;
+                *hor_it = (*hor_it < tmp) ? tmp : *hor_it;
+            }
+
+            // for (auto const & res : this->score_matrix.one_score_column)
+            //     std::cout << res << " ";
+
+            // std::cout << "\n";
         }
 
-        // ----------------------------------------------------------------------------
-        // Wrap up phase: track score in last column and prepare the alignment result.
-        // ----------------------------------------------------------------------------
+        // for (auto const & seq1_value : sequence1)
+        // {
+        //     compute_alignment_column<true>(seq1_value, sequence2);
+        //     finalise_last_cell_in_column(true);
+        // }
 
-        finalise_alignment();
+        // // ----------------------------------------------------------------------------
+        // // Wrap up phase: track score in last column and prepare the alignment result.
+        // // ----------------------------------------------------------------------------
+
+        // finalise_alignment();
     }
 
     //!\overload
@@ -466,28 +532,42 @@ private:
      * column which can vary between banded and unbanded alignments. The value of the second sequence is actually not
      * used during the initialisation.
      */
-    template <typename sequence2_t>
-    auto initialise_first_alignment_column(sequence2_t && sequence2)
-    {
-        // Get the initial column.
-        alignment_column = this->current_alignment_column();
-        assert(!alignment_column.empty()); // Must contain at least one element.
+    // template <typename sequence2_t>
+    // auto initialise_first_alignment_column(sequence2_t && sequence2)
+    // {
+    //     // Get the initial column.
+    //     alignment_column = this->current_alignment_column();
+    //     assert(!alignment_column.empty()); // Must contain at least one element.
 
-        // Initialise first cell.
-        alignment_column_it = alignment_column.begin();
-        this->init_origin_cell(*alignment_column_it, this->alignment_state);
+    //     // Initialise first cell.
+    //     alignment_column_it = alignment_column.begin();
+    //     this->init_origin_cell(*alignment_column_it, this->alignment_state);
 
-        // Initialise the remaining cells of this column.
-        for (auto it = std::ranges::begin(sequence2); it != std::ranges::end(sequence2); ++it)
-            this->init_column_cell(*++alignment_column_it, this->alignment_state);
+    //     // Initialise the remaining cells of this column.
+    //     for (auto it = std::ranges::begin(sequence2); it != std::ranges::end(sequence2); ++it)
+    //         this->init_column_cell(*++alignment_column_it, this->alignment_state);
 
-        // Finalise the last cell of the initial column.
-        bool at_last_row = true;
-        if constexpr (traits_t::is_banded) // If the band reaches until the last row of the matrix.
-            at_last_row = static_cast<size_t>(this->score_matrix.band_row_index) == this->score_matrix.num_rows - 1;
+    //     // Finalise the last cell of the initial column.
+    //     bool at_last_row = true;
+    //     if constexpr (traits_t::is_banded) // If the band reaches until the last row of the matrix.
+    //         at_last_row = static_cast<size_t>(this->score_matrix.band_row_index) == this->score_matrix.num_rows - 1;
 
-        finalise_last_cell_in_column(at_last_row);
-    }
+    //     finalise_last_cell_in_column(at_last_row);
+    // }
+
+    // template <typename sequence2_t>
+    // auto initialise_first_alignment_column(sequence2_t && sequence2)
+    // {
+    //     this->score_matrix.vertical = this->alignment_state.gap_open_score;
+
+    //     // initialise the first column.
+    //     for (auto && [opt, hor] : seqan3::views::zip(this->score_matrix.one_score_column, this->score_matrix.one_horizontal_column) | seqan3::views::drop(1))
+    //     {
+    //         opt = this->score_matrix.vertical;
+    //         hor = opt + this->alignment_state.gap_open_score;
+    //         this->score_matrix.vertical += this->alignment_state.gap_extension_score;
+    //     }
+    // }
 
     /*!\brief Computes a single alignment column.
      * \tparam initialise_first_cell An explicit bool template argument indicating whether the first cell of the current
@@ -607,7 +687,8 @@ private:
 
         // Choose what needs to be computed.
         if constexpr (traits_t::result_type_rank >= 0)  // compute score
-            res.score = this->alignment_state.optimum.score;
+            res.score = this->score_matrix.one_score_column.back();
+            // res.score = this->alignment_state.optimum.score;
 
         if constexpr (traits_t::result_type_rank >= 1)  // compute back coordinate
         {

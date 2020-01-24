@@ -143,7 +143,8 @@ private:
         //!\brief The selected score matrix for either banded or unbanded alignments.
         using score_matrix_t = std::conditional_t<traits_t::is_banded,
                                                   alignment_score_matrix_one_column_banded<typename traits_t::score_t>,
-                                                  alignment_score_matrix_one_column<typename traits_t::score_t>>;
+                                                //alignment_score_matrix_one_column<typename traits_t::score_t>>;
+                                                  simple_score_matrix<typename traits_t::score_t>>;
         //!\brief The selected trace matrix for either banded or unbanded alignments.
         using trace_matrix_t = std::conditional_t<traits_t::is_banded,
                                                   alignment_trace_matrix_full_banded<typename traits_t::trace_t,
@@ -262,7 +263,8 @@ public:
                                              >;
             using result_collection_t = std::vector<result_t>;  // Use a vector as return type.
             // Define the function wrapper type.
-            using function_wrapper_t = std::function<result_collection_t(indexed_sequence_pair_chunk_t)>;
+            // using function_wrapper_t = std::function<result_collection_t(indexed_sequence_pair_chunk_t)>;
+            using function_wrapper_t = std::function<result_t(size_t, wrapped_first_t, wrapped_second_t)>;
 
             // ----------------------------------------------------------------------------
             // Test some basic preconditions
@@ -293,24 +295,24 @@ public:
             auto const & scoring_scheme = get<align_cfg::scoring>(cfg).value;
             auto align_ends_cfg = cfg.template value_or<align_cfg::aligned_ends>(free_ends_none);
 
-            if constexpr (config_t::template exists<align_cfg::mode<detail::global_alignment_type>>())
-            {
-                // Only use edit distance if ...
-                if (gaps.get_gap_open_score() == 0 &&  // gap open score is not set,
-                    !(align_ends_cfg[2] || align_ends_cfg[3]) && // none of the free end gaps are set for second seq,
-                    align_ends_cfg[0] == align_ends_cfg[1]) // free ends for leading and trailing gaps are equal in first seq.
-                {
-                    // TODO: Instead of relying on nucleotide scoring schemes we need to be able to determine the edit distance
-                    //       option via the scheme.
-                    if constexpr (is_type_specialisation_of_v<remove_cvref_t<decltype(scoring_scheme)>,
-                                                              nucleotide_scoring_scheme>)
-                    {
-                        if ((scoring_scheme.score('A'_dna15, 'A'_dna15) == 0) &&
-                            (scoring_scheme.score('A'_dna15, 'C'_dna15)) == -1)
-                            return std::pair{configure_edit_distance<function_wrapper_t>(cfg), cfg};
-                    }
-                }
-            }
+            // if constexpr (config_t::template exists<align_cfg::mode<detail::global_alignment_type>>())
+            // {
+            //     // Only use edit distance if ...
+            //     if (gaps.get_gap_open_score() == 0 &&  // gap open score is not set,
+            //         !(align_ends_cfg[2] || align_ends_cfg[3]) && // none of the free end gaps are set for second seq,
+            //         align_ends_cfg[0] == align_ends_cfg[1]) // free ends for leading and trailing gaps are equal in first seq.
+            //     {
+            //         // TODO: Instead of relying on nucleotide scoring schemes we need to be able to determine the edit distance
+            //         //       option via the scheme.
+            //         if constexpr (is_type_specialisation_of_v<remove_cvref_t<decltype(scoring_scheme)>,
+            //                                                   nucleotide_scoring_scheme>)
+            //         {
+            //             if ((scoring_scheme.score('A'_dna15, 'A'_dna15) == 0) &&
+            //                 (scoring_scheme.score('A'_dna15, 'C'_dna15)) == -1)
+            //                 return std::pair{configure_edit_distance<function_wrapper_t>(cfg), cfg};
+            //         }
+            //     }
+            // }
 
             // ----------------------------------------------------------------------------
             // Check if invalid configuration was used.

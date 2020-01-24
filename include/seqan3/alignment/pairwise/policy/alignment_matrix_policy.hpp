@@ -24,6 +24,34 @@
 namespace seqan3::detail
 {
 
+template <typename score_t>
+struct simple_score_matrix
+{
+    using score_type = score_t;
+    using iterator = typename std::vector<score_type>::iterator;
+    // What do I need to do now?
+    // I have to work on a score matrix that is as close to the kernel as possible.
+    // No two dimensional stuff
+
+    iterator next()
+    {
+        return one_score_column.begin();
+    }
+
+    void resize(size_t const new_size)
+    {
+        one_score_column.clear();
+        one_horizontal_column.clear();
+        one_score_column.resize(new_size, 0);
+        one_horizontal_column.resize(new_size, 0);
+    }
+
+    std::vector<score_type> one_score_column{};
+    std::vector<score_type> one_horizontal_column{};
+    score_t diagonal{0};
+    score_t vertical{0};
+};
+
 /*!\brief Manages the alignment and score matrix.
  * \ingroup alignment_policy
  *
@@ -76,7 +104,8 @@ private:
     template <typename sequence1_t, typename sequence2_t>
     constexpr void allocate_matrix(sequence1_t && sequence1, sequence2_t && sequence2)
     {
-        score_matrix = score_matrix_t{sequence1, sequence2};
+        score_matrix.resize(std::ranges::distance(sequence2) + 1);
+        //= score_matrix_t{sequence1, sequence2};
         trace_matrix = trace_matrix_t{sequence1, sequence2};
 
         initialise_matrix_iterator();
@@ -121,7 +150,7 @@ private:
     //!\brief Initialises the score and trace matrix iterator after allocating the matrices.
     constexpr void initialise_matrix_iterator() noexcept
     {
-        score_matrix_iter = score_matrix.begin();
+        score_matrix_iter = score_matrix.one_score_column.begin();
         trace_matrix_iter = trace_matrix.begin();
     }
 
@@ -172,10 +201,10 @@ private:
      */
     constexpr auto current_alignment_column() noexcept
     {
-        assert(!std::ranges::empty(*score_matrix_iter));
+        assert(!std::ranges::empty(score_matrix.one_score_column));
         assert(!std::ranges::empty(*trace_matrix_iter));
 
-        return views::zip(*score_matrix_iter, *trace_matrix_iter);
+        return views::zip(score_matrix.one_score_column, *trace_matrix_iter);
     }
 
     /*!\brief Moves to the next alignment column.
@@ -186,7 +215,7 @@ private:
      */
     constexpr void next_alignment_column() noexcept
     {
-        ++score_matrix_iter;
+        // score_matrix_iter = score_matrix.next();
         ++trace_matrix_iter;
     }
 
