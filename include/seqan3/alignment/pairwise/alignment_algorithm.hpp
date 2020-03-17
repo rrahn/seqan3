@@ -298,8 +298,15 @@ private:
         }
         else
         {
-            compute_matrix(sequence1, sequence2);
-            return make_alignment_result(idx, sequence1, sequence2);
+
+
+            using result_value_t = typename align_result_selector<sequence1_t, sequence2_t, config_t>::type;
+
+            result_value_t res{};
+            res.id = idx;
+            res.score = compute_matrix(sequence1, sequence2);
+            return res;
+            // return make_alignment_result(idx, sequence1, sequence2);
         }
     }
 
@@ -377,33 +384,99 @@ private:
      * \param[in] sequence2 The second sequence.
      */
     template <typename sequence1_t, typename sequence2_t>
-    void compute_matrix(sequence1_t & sequence1, sequence2_t & sequence2)
+    int32_t compute_matrix(sequence1_t & sequence1, sequence2_t & sequence2)
     //!\cond
         requires !traits_t::is_banded
     //!\endcond
     {
-        // ----------------------------------------------------------------------------
-        // Initialisation phase: allocate memory and initialise first column.
-        // ----------------------------------------------------------------------------
+        int32_t gap_extension{-1};
+        int32_t gap_open{-11};
+        int32_t match{6};
+        int32_t mismatch{-4};
+        size_t sequence_index = 0;
 
-        this->allocate_matrix(sequence1, sequence2);
-        initialise_first_alignment_column(sequence2);
+        std::vector<int32_t> optimal_column{};
+        std::vector<int32_t> horizontal_column{};
 
-        // ----------------------------------------------------------------------------
-        // Recursion phase: compute column-wise the alignment matrix.
-        // ----------------------------------------------------------------------------
+        // Initialise matrix
+        optimal_column.clear();
+        horizontal_column.clear();
+        optimal_column.resize(sequence2.size() + 1, 0);
+        horizontal_column.resize(sequence2.size() + 1, 0);
+        int32_t index = 0;
+        int32_t diagonal{};
+        int32_t vertical{gap_open};
 
-        for (auto const & seq1_value : sequence1)
+        // Initialise the first column.
+        for (auto && [opt, hor] : seqan3::views::zip(optimal_column, horizontal_column) | seqan3::views::drop(1))
         {
-            compute_alignment_column<true>(seq1_value, sequence2);
-            finalise_last_cell_in_column(true);
+            opt = vertical;
+            hor = opt + gap_open;
+            vertical += gap_extension;
         }
 
-        // ----------------------------------------------------------------------------
-        // Wrap up phase: track score in last column and prepare the alignment result.
-        // ----------------------------------------------------------------------------
+        // Compute the matrix
+        for (auto it_col = sequence1.begin(); it_col != sequence1.end(); ++it_col)
+        {
+            // Initialise first cell of optimal_column.
+            auto opt_it = optimal_column.begin();
+            auto hor_it = horizontal_column.begin();
 
-        finalise_alignment();
+            diagonal = *opt_it;  // cache the diagonal for next cell
+            *opt_it =  gap_open + gap_extension * (it_col - sequence1.begin()); // initialise the horizontal score
+            *hor_it = *opt_it; // initialise the horizontal score
+            vertical = *opt_it + gap_open; // initialise the vertical value
+            // std::cout << "vert: " << *opt_it << "\n";
+            // Go to next cell.
+            ++opt_it;
+            ++hor_it;
+            // std::cout << "diagonal: ";
+            for (auto it_row = sequence2.begin(); it_row != sequence2.end(); ++it_row, ++opt_it, ++hor_it)
+            {
+                // Precompute the diagonal score.
+                int32_t tmp = diagonal + ((*it_col == *it_row) ? match : mismatch);
+
+                // std::cout << diagonal << ": " <<   tmp << " ";
+
+                tmp = (tmp < vertical) ? vertical : tmp;
+                tmp = (tmp < *hor_it) ? *hor_it : tmp;
+
+                // Store the current max score.
+                diagonal = *opt_it; // cache the next diagonal before writing it
+                *opt_it = tmp; // store the temporary result
+
+                tmp += gap_open;  // add gap open costs
+                vertical += gap_extension;
+                *hor_it += gap_extension;
+
+                // store the vertical and horizontal value in the next path
+                vertical = (vertical < tmp) ? tmp : vertical;
+                *hor_it = (*hor_it < tmp) ? tmp : *hor_it;
+            }
+        }
+        return optimal_column.back();
+        // // ----------------------------------------------------------------------------
+        // // Initialisation phase: allocate memory and initialise first column.
+        // // ----------------------------------------------------------------------------
+
+        // this->allocate_matrix(sequence1, sequence2);
+        // initialise_first_alignment_column(sequence2);
+
+        // // ----------------------------------------------------------------------------
+        // // Recursion phase: compute column-wise the alignment matrix.
+        // // ----------------------------------------------------------------------------
+
+        // for (auto const & seq1_value : sequence1)
+        // {
+        //     compute_alignment_column<true>(seq1_value, sequence2);
+        //     finalise_last_cell_in_column(true);
+        // }
+
+        // // ----------------------------------------------------------------------------
+        // // Wrap up phase: track score in last column and prepare the alignment result.
+        // // ----------------------------------------------------------------------------
+
+        // finalise_alignment();
     }
 
     //!\overload
