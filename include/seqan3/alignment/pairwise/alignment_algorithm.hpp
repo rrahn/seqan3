@@ -418,40 +418,26 @@ private:
         // Compute the matrix
         for (auto it_col = sequence1.begin(); it_col != sequence1.end(); ++it_col)
         {
+            auto alignment_column = seqan3::views::zip(optimal_column, horizontal_column);
             // Initialise first cell of optimal_column.
-            auto opt_it = optimal_column.begin();
-            auto hor_it = horizontal_column.begin();
+            auto alignment_column_iter = alignment_column.begin();
+            auto [opt, hor] = *alignment_column_iter;
 
-            diagonal = *opt_it;  // cache the diagonal for next cell
-            *opt_it =  gap_open + gap_extension * (it_col - sequence1.begin()); // initialise the horizontal score
-            *hor_it = *opt_it; // initialise the horizontal score
-            vertical = *opt_it + gap_open; // initialise the vertical value
-            // std::cout << "vert: " << *opt_it << "\n";
+            diagonal = opt;  // cache the diagonal for next cell
+            opt = gap_open + gap_extension * std::ranges::distance(sequence1.begin(), it_col); // initialise the horizontal score
+            hor = opt; // initialise the horizontal score
+            vertical = opt + gap_open; // initialise the vertical value
             // Go to next cell.
-            ++opt_it;
-            ++hor_it;
-            // std::cout << "diagonal: ";
-            for (auto it_row = sequence2.begin(); it_row != sequence2.end(); ++it_row, ++opt_it, ++hor_it)
+            ++alignment_column_iter;
+            for (auto it_row = sequence2.begin(); it_row != sequence2.end(); ++it_row, ++alignment_column_iter)
             {
-                // Precompute the diagonal score.
-                int32_t tmp = diagonal + ((*it_col == *it_row) ? match : mismatch);
-
-                // std::cout << diagonal << ": " <<   tmp << " ";
-
-                tmp = (tmp < vertical) ? vertical : tmp;
-                tmp = (tmp < *hor_it) ? *hor_it : tmp;
-
-                // Store the current max score.
-                diagonal = *opt_it; // cache the next diagonal before writing it
-                *opt_it = tmp; // store the temporary result
-
-                tmp += gap_open;  // add gap open costs
-                vertical += gap_extension;
-                *hor_it += gap_extension;
-
-                // store the vertical and horizontal value in the next path
-                vertical = (vertical < tmp) ? tmp : vertical;
-                *hor_it = (*hor_it < tmp) ? tmp : *hor_it;
+                auto tpl = *alignment_column_iter;
+                int32_t next_diagonal = std::get<0>(tpl);
+                *alignment_column_iter = this->compute_cell(diagonal,
+                                                            std::get<1>(tpl),
+                                                            vertical,
+                                                            this->scoring_scheme.score(*it_col, *it_row));
+                diagonal = next_diagonal;
             }
         }
         return optimal_column.back();

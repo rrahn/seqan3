@@ -77,6 +77,29 @@ private:
      * stored in the zipped tuple is the seqan3::detail::alignment_score_matrix_proxy and the second value is the
      * seqan3::detail::alignment_trace_matrix_proxy.
      */
+    constexpr auto compute_cell(score_t diagonal,
+                                score_t horizontal,
+                                score_t & vertical,
+                                score_t const score) const noexcept
+    {
+        // Precompute the diagonal score.
+        diagonal += score;
+
+        // std::cout << diagonal << ": " <<   tmp << " ";
+        diagonal = (diagonal < vertical) ? vertical : diagonal;
+        diagonal = (diagonal < horizontal) ? horizontal : diagonal;
+
+        score_t tmp = diagonal + gap_open;  // add gap open costs
+        vertical += gap_extension;
+        horizontal += gap_extension;
+
+        // store the vertical and horizontal value in the next path
+        vertical = (vertical < tmp) ? tmp : vertical;
+        horizontal = (horizontal < tmp) ? tmp : horizontal;
+
+        return std::pair{diagonal, horizontal};
+    }
+
     template <typename cell_t>
     constexpr void compute_cell(cell_t && current_cell,
                                 alignment_algorithm_state<score_t> & cache,
@@ -183,8 +206,15 @@ private:
 
         alignment_state.gap_extension_score = static_cast<score_t>(scheme.get_gap_score());
         alignment_state.gap_open_score = static_cast<score_t>(scheme.get_gap_score() + scheme.get_gap_open_score());
+        gap_extension = alignment_state.gap_extension_score;
+        gap_open = alignment_state.gap_open_score;
+
+        // std::cout << "gap_extension " << gap_extension << "\n";
+        // std::cout << "gap_open " << gap_open << "\n";
     }
 
+    score_t gap_extension{};
+    score_t gap_open{};
     alignment_state_t alignment_state{}; //!< The internal alignment state tracking the current alignment optimum.
 };
 
