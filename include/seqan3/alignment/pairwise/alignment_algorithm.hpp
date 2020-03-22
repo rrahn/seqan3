@@ -23,6 +23,7 @@
 #include <seqan3/alignment/matrix/trace_directions.hpp>
 #include <seqan3/alignment/pairwise/align_result_selector.hpp>
 #include <seqan3/alignment/pairwise/detail/concept.hpp>
+#include <seqan3/alignment/pairwise/detail/pairwise_alignment_policy_score_matrix.hpp>
 #include <seqan3/alignment/pairwise/detail/type_traits.hpp>
 #include <seqan3/alignment/matrix/detail/aligned_sequence_builder.hpp>
 
@@ -77,6 +78,7 @@ namespace seqan3::detail
  */
 template <typename config_t, typename ...algorithm_policies_t>
 class alignment_algorithm :
+    public pairwise_alignment_policy_score_matrix<config_t>,
     public invoke_deferred_crtp_base<algorithm_policies_t, alignment_algorithm<config_t, algorithm_policies_t...>>...
 {
 private:
@@ -389,49 +391,39 @@ private:
         requires !traits_t::is_banded
     //!\endcond
     {
-        int32_t gap_extension{-1};
-        int32_t gap_open{-11};
-        int32_t match{6};
-        int32_t mismatch{-4};
-        size_t sequence_index = 0;
+        auto local_matrix = this->acquire_alignment_matrix(sequence1, sequence2);
+        auto matrix_iterator = local_matrix.begin();
 
-        std::vector<int32_t> optimal_column{};
-        std::vector<int32_t> horizontal_column{};
-
-        // Initialise matrix
-        optimal_column.clear();
-        horizontal_column.clear();
-        optimal_column.resize(sequence2.size() + 1, 0);
-        horizontal_column.resize(sequence2.size() + 1, 0);
-        int32_t index = 0;
         int32_t diagonal{};
-        int32_t vertical{gap_open};
+        int32_t vertical{this->gap_open};
+        auto alignment_column = *matrix_iterator;
 
         // Initialise the first column.
-        for (auto && [opt, hor] : seqan3::views::zip(optimal_column, horizontal_column) | seqan3::views::drop(1))
+        for (auto & cell : alignment_column | seqan3::views::drop(1))
         {
-            opt = vertical;
-            hor = opt + gap_open;
-            vertical += gap_extension;
+            cell.first = vertical;
+            cell.second = cell.first + this->gap_open;
+            vertical += this->gap_extension;
         }
 
+        ++matrix_iterator; // move to next column
         // Compute the matrix
-        for (auto it_col = sequence1.begin(); it_col != sequence1.end(); ++it_col)
+        for (auto it_col = sequence1.begin(); it_col != sequence1.end(); ++it_col, ++matrix_iterator)
         {
-            auto alignment_column = seqan3::views::zip(optimal_column, horizontal_column);
-            // Initialise first cell of optimal_column.
+            // auto alignment_column = views::zip(optimal_column, horizontal_column);
             auto alignment_column_iter = alignment_column.begin();
-            auto [opt, hor] = *alignment_column_iter;
+            auto & cell = *alignment_column_iter;
 
-            diagonal = opt;  // cache the diagonal for next cell
-            opt = gap_open + gap_extension * std::ranges::distance(sequence1.begin(), it_col); // initialise the horizontal score
-            hor = opt; // initialise the horizontal score
-            vertical = opt + gap_open; // initialise the vertical value
+            // Initialise first cell of current column
+            diagonal = cell.first;  // cache the diagonal for next cell
+            cell.first = this->gap_open + this->gap_extension * std::ranges::distance(sequence1.begin(), it_col); // initialise the horizontal score
+            cell.second = cell.first; // initialise the horizontal score
+            vertical = cell.first + this->gap_open; // initialise the vertical value
             // Go to next cell.
             ++alignment_column_iter;
             for (auto it_row = sequence2.begin(); it_row != sequence2.end(); ++it_row, ++alignment_column_iter)
             {
-                auto tpl = *alignment_column_iter;
+                const auto & tpl = *alignment_column_iter;
                 int32_t next_diagonal = std::get<0>(tpl);
                 *alignment_column_iter = this->compute_cell(diagonal,
                                                             std::get<1>(tpl),
@@ -440,7 +432,7 @@ private:
                 diagonal = next_diagonal;
             }
         }
-        return optimal_column.back();
+        return std::get<0>(alignment_column.back());
         // // ----------------------------------------------------------------------------
         // // Initialisation phase: allocate memory and initialise first column.
         // // ----------------------------------------------------------------------------
