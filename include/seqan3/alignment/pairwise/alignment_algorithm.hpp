@@ -23,6 +23,7 @@
 #include <seqan3/alignment/matrix/trace_directions.hpp>
 #include <seqan3/alignment/pairwise/align_result_selector.hpp>
 #include <seqan3/alignment/pairwise/detail/concept.hpp>
+#include <seqan3/alignment/pairwise/detail/pairwise_alignment_policy_affine_gaps.hpp>
 #include <seqan3/alignment/pairwise/detail/pairwise_alignment_policy_score_matrix.hpp>
 #include <seqan3/alignment/pairwise/detail/type_traits.hpp>
 #include <seqan3/alignment/matrix/detail/aligned_sequence_builder.hpp>
@@ -78,10 +79,13 @@ namespace seqan3::detail
  */
 template <typename config_t, typename ...algorithm_policies_t>
 class alignment_algorithm :
-    public pairwise_alignment_policy_score_matrix<config_t>,
-    public invoke_deferred_crtp_base<algorithm_policies_t, alignment_algorithm<config_t, algorithm_policies_t...>>...
+    public invoke_deferred_crtp_base<algorithm_policies_t, alignment_algorithm<config_t, algorithm_policies_t...>>...,
+    protected pairwise_alignment_policy_score_matrix<config_t>,
+    protected pairwise_alignment_policy_affine_gaps<config_t, false>
 {
 private:
+    using affine_gap_base_t = pairwise_alignment_policy_affine_gaps<config_t, false>;
+    using matrix_base_t = pairwise_alignment_policy_score_matrix<config_t>;
 
     //!\brief The alignment configuration traits type with auxiliary information extracted from the configuration type.
     using traits_t = alignment_configuration_traits<config_t>;
@@ -124,10 +128,13 @@ public:
      * Maintains a copy of the configuration object on the heap using a std::shared_ptr. In addition, the alignment
      * state is initialised.
      */
-    explicit constexpr alignment_algorithm(config_t const & cfg) : cfg_ptr{std::make_shared<config_t>(cfg)}
+    explicit constexpr alignment_algorithm(config_t const & cfg) :
+        matrix_base_t{cfg},
+        affine_gap_base_t{cfg},
+        cfg_ptr{std::make_shared<config_t>(cfg)}
     {
         this->scoring_scheme = seqan3::get<align_cfg::scoring>(*cfg_ptr).value;
-        this->initialise_alignment_state(*cfg_ptr);
+        // this->initialise_alignment_state(*cfg_ptr);
     }
     //!\}
 
@@ -391,70 +398,52 @@ private:
         requires !traits_t::is_banded
     //!\endcond
     {
+        // ---------------------------------------------------------------------
+        // Initialisation phase: allocate memory and initialise first column.
+        // ---------------------------------------------------------------------
+
         auto local_matrix = this->acquire_alignment_matrix(sequence1, sequence2);
         auto matrix_iterator = local_matrix.begin();
-
-        int32_t diagonal{};
-        int32_t vertical{this->gap_open};
         auto alignment_column = *matrix_iterator;
 
         // Initialise the first column.
-        for (auto & cell : alignment_column | seqan3::views::drop(1))
-        {
-            cell.first = vertical;
-            cell.second = cell.first + this->gap_open;
-            vertical += this->gap_extension;
-        }
+        *alignment_column.begin() = this->initialise_origin_cell();
+        for (auto cell : alignment_column | seqan3::views::drop(1))
+            cell = this->initialise_first_column_cell(cell);
 
-        ++matrix_iterator; // move to next column
-        // Compute the matrix
+        // ---------------------------------------------------------------------
+        // Recursion phase: compute column-wise the alignment matrix.
+        // ---------------------------------------------------------------------
+
+        // Compute remaining matrix
+        ++matrix_iterator; // Move to next column.
         for (auto it_col = sequence1.begin(); it_col != sequence1.end(); ++it_col, ++matrix_iterator)
         {
             // auto alignment_column = views::zip(optimal_column, horizontal_column);
             auto alignment_column_iter = alignment_column.begin();
-            auto & cell = *alignment_column_iter;
 
-            // Initialise first cell of current column
-            diagonal = cell.first;  // cache the diagonal for next cell
-            cell.first = this->gap_open + this->gap_extension * std::ranges::distance(sequence1.begin(), it_col); // initialise the horizontal score
-            cell.second = cell.first; // initialise the horizontal score
-            vertical = cell.first + this->gap_open; // initialise the vertical value
-            // Go to next cell.
-            ++alignment_column_iter;
+            // Initialise first cell of current column.
+            auto cell = *alignment_column_iter;
+            typename traits_t::score_t diagonal = cell.optimal_score();
+            *alignment_column_iter = this->initialise_first_row_cell(cell);
+
+            ++alignment_column_iter;  // Move to next cell in column.
             for (auto it_row = sequence2.begin(); it_row != sequence2.end(); ++it_row, ++alignment_column_iter)
             {
-                const auto & tpl = *alignment_column_iter;
-                int32_t next_diagonal = std::get<0>(tpl);
-                *alignment_column_iter = this->compute_cell(diagonal,
-                                                            std::get<1>(tpl),
-                                                            vertical,
-                                                            this->scoring_scheme.score(*it_col, *it_row));
+                auto cell = *alignment_column_iter;
+                typename traits_t::score_t next_diagonal = cell.optimal_score();
+                *alignment_column_iter = this->compute_inner_cell(diagonal,
+                                                                  cell,
+                                                                  this->scoring_scheme.score(*it_col, *it_row));
                 diagonal = next_diagonal;
             }
         }
-        return std::get<0>(alignment_column.back());
-        // // ----------------------------------------------------------------------------
-        // // Initialisation phase: allocate memory and initialise first column.
-        // // ----------------------------------------------------------------------------
 
-        // this->allocate_matrix(sequence1, sequence2);
-        // initialise_first_alignment_column(sequence2);
+        // ---------------------------------------------------------------------
+        // Wrap up phase: track score of last column
+        // ---------------------------------------------------------------------
 
-        // // ----------------------------------------------------------------------------
-        // // Recursion phase: compute column-wise the alignment matrix.
-        // // ----------------------------------------------------------------------------
-
-        // for (auto const & seq1_value : sequence1)
-        // {
-        //     compute_alignment_column<true>(seq1_value, sequence2);
-        //     finalise_last_cell_in_column(true);
-        // }
-
-        // // ----------------------------------------------------------------------------
-        // // Wrap up phase: track score in last column and prepare the alignment result.
-        // // ----------------------------------------------------------------------------
-
-        // finalise_alignment();
+        return alignment_column[std::ranges::distance(sequence2)].optimal_score();
     }
 
     //!\overload

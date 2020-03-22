@@ -12,9 +12,9 @@
 
 #pragma once
 
-#include <seqan3/core/platform.hpp>
-
-#include <seqan3/std/span>
+#include <seqan3/alignment/pairwise/detail/affine_cell_proxy.hpp>
+#include <seqan3/range/views/repeat_n.hpp>
+#include <seqan3/range/views/zip.hpp>
 
 namespace seqan3::detail
 {
@@ -23,10 +23,12 @@ template <typename score_t>
 class single_column_score_matrix
 {
 private:
-    using combined_score_t = std::pair<score_t, score_t>;
+    using vertical_column_t = decltype(views::repeat_n(score_t{}, 1));
 
-    std::vector<combined_score_t> optimal_column{};
-    size_t number_columns{};
+    std::vector<score_t> optimal_column{};
+    std::vector<score_t> horizontal_column{};
+    vertical_column_t vertical_column{};
+    size_t columns_count{};
 
     class iterator
     {
@@ -36,14 +38,14 @@ private:
         size_t end_column{};
 
     public:
+
         /*!\name Associated types
          * \{
          */
-        using value_type = decltype(host_ptr->optimal_column);
-        using reference = std::span<combined_score_t>;
-        using const_reference = std::span<combined_score_t const>;
+        // using value_type = zip_column_t;
+        // using reference = zip_column_t;
         using pointer = void;
-        using differnce = void;
+        using difference = void;
         using iterator_tag = std::forward_iterator_tag;
         //!\}
 
@@ -59,13 +61,18 @@ private:
 
         explicit iterator(single_column_score_matrix & matrix_obj) noexcept :
             host_ptr{std::addressof(matrix_obj)},
-            end_column{host_ptr->number_columns}
+            end_column{host_ptr->columns_count}
         {}
         //!\}
 
-        reference operator*() const noexcept
+        auto operator*() const noexcept
         {
-            return std::span{host_ptr->optimal_column};
+            return views::zip(host_ptr->optimal_column, host_ptr->horizontal_column, host_ptr->vertical_column)
+                 | std::views::transform([] (auto && tpl)
+                {
+                    using fwd_tuple_t = decltype(tpl);
+                    return affine_cell_proxy<remove_cvref_t<fwd_tuple_t>>{std::forward<fwd_tuple_t>(tpl)};
+                });
         }
 
         iterator & operator++() noexcept
@@ -127,9 +134,12 @@ public:
     template <std::ranges::forward_range sequence1_t, std::ranges::forward_range sequence2_t>
     void reset_matrix(sequence1_t && seq1, sequence2_t && seq2)
     {
+        size_t column_size = std::ranges::distance(seq2) + 1;
         optimal_column.clear();
-        optimal_column.resize(std::ranges::distance(seq2) + 1, {0, 0});
-        number_columns = std::ranges::distance(seq1) + 1;
+        optimal_column.resize(column_size, 0);
+        horizontal_column.resize(column_size, 0);
+        vertical_column = views::repeat_n(score_t{}, column_size);
+        columns_count = std::ranges::distance(seq1) + 1;
     }
 
     iterator begin()
@@ -218,8 +228,8 @@ protected:
      *
      * Resets the cached alignment matrix with the new dimensions given by the size of the passed sequences and returns
      * a seqan3::detail::pairwise_alignment_policy_score_matrix::alignment_matrix wrapping the actual matrix.
-     * The returned matrix is a local variable for the algorithm but reuses the memory of the globally cahed matrix
-     * in order to avoid unecessary allocations inbetween calls to the same algorithm instance.
+     * The returned matrix is a local variable for the algorithm but reuses the memory of the globally cached matrix
+     * in order to avoid unecessary allocations in between calls to the same algorithm instance.
      */
     template <std::ranges::forward_range sequence1_t, std::ranges::forward_range sequence2_t>
     alignment_matrix acquire_alignment_matrix(sequence1_t && seq1, sequence2_t && seq2)
