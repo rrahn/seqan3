@@ -26,6 +26,9 @@
 #include <seqan3/alignment/pairwise/alignment_algorithm.hpp>
 #include <seqan3/alignment/pairwise/align_result_selector.hpp>
 #include <seqan3/alignment/pairwise/alignment_result.hpp>
+#include <seqan3/alignment/pairwise/detail/pairwise_alignment_algorithm.hpp>
+#include <seqan3/alignment/pairwise/detail/pairwise_alignment_policy_affine_gaps.hpp>
+#include <seqan3/alignment/pairwise/detail/pairwise_alignment_policy_score_matrix.hpp>
 #include <seqan3/alignment/pairwise/detail/type_traits.hpp>
 #include <seqan3/alignment/pairwise/detail/concept.hpp>
 #include <seqan3/alignment/pairwise/edit_distance_algorithm.hpp>
@@ -475,10 +478,12 @@ private:
     static constexpr function_wrapper_t make_algorithm(config_t const & cfg)
     {
         using traits_t = alignment_configuration_traits<config_t>;
-        using matrix_policy_t = typename select_matrix_policy<traits_t>::type;
-        using gap_policy_t = typename select_gap_policy<traits_t>::type;
+        // using matrix_policy_t = typename select_matrix_policy<traits_t>::type;
+        using matrix_policy_t = pairwise_alignment_policy_score_matrix<config_t>;
+        // using gap_policy_t = typename select_gap_policy<traits_t>::type;
+        using gap_policy_t = pairwise_alignment_policy_affine_gaps<config_t, false>;
 
-        return alignment_algorithm<config_t, matrix_policy_t, gap_policy_t, policies_t...>{cfg};
+        return pairwise_alignment_algorithm<config_t, matrix_policy_t, gap_policy_t>{cfg};
     }
 };
 
