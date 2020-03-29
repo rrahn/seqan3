@@ -34,6 +34,10 @@ protected:
     score_type gap_extension_score{};
     //!\brief The score for a gap opening including the gap extension.
     score_type gap_open_score{};
+    //!\brief Flag indicating whether the first row is zero initialised.
+    bool zero_initialise_row{};
+    //!\brief Flag indicating whether the first column is zero initialised.
+    bool zero_initialise_column{};
 
     /*!\name Constructors, destructor and assignment
      * \{
@@ -57,9 +61,12 @@ protected:
         // Get the gap scheme from the config and choose -1 and -10 as default.
         gap_scheme my_gap{gap_score{-1}, seqan3::gap_open_score{-10}};
         auto && tmp_scheme = config.template value_or<align_cfg::gap>(my_gap);
-
         gap_extension_score = static_cast<score_type>(tmp_scheme.get_gap_score());
         gap_open_score = static_cast<score_type>(tmp_scheme.get_gap_open_score()) + gap_extension_score;
+
+        auto align_ends_cfg = config.template value_or<align_cfg::aligned_ends>(free_ends_none);
+        zero_initialise_row = align_ends_cfg[0];
+        zero_initialise_column = align_ends_cfg[2];
     }
     //!\}
 
@@ -135,7 +142,7 @@ protected:
      */
     affine_cell_proxy_t initialise_origin_cell() const noexcept
     {
-        return {0, gap_open_score, gap_open_score};
+        return {0, (zero_initialise_row) ? 0 : gap_open_score, (zero_initialise_column) ? 0 : gap_open_score};
     }
 
     /*!\brief Initialises a cell of the first alignment matrix column.
@@ -154,14 +161,14 @@ protected:
     template <typename affine_cell_t>
     affine_cell_proxy_t initialise_first_column_cell(affine_cell_t cell) const noexcept
     {
-        score_type new_vertical = cell.vertical_score() + gap_extension_score;
-        return {cell.vertical_score(), cell.vertical_score() + gap_open_score, new_vertical};
+        score_type vertical_score = (zero_initialise_column) ? 0 : cell.vertical_score() + gap_extension_score;
+        return {cell.vertical_score(), cell.vertical_score() + gap_open_score, vertical_score};
     }
 
     /*!\brief Initialises the first cell of a alignment matrix column.
      * \tparam affine_cell_t The type of the affine cell.
      *
-     * \param previous_cell The predecessor cell on the same row.
+     * \param cell The predecessor cell on the same row.
      *
      * \returns The computed cell.
      *
@@ -172,12 +179,12 @@ protected:
      * \f$H[0, j] + g_o\f$ to prohibit extending a gap in the vertical matrix from \f$V[0, j]\f$.
      */
     template <typename affine_cell_t>
-    affine_cell_proxy_t initialise_first_row_cell(affine_cell_t previous_cell) const noexcept
+    affine_cell_proxy_t initialise_first_row_cell(affine_cell_t cell) const noexcept
     {
-        score_type new_horizontal_score = previous_cell.horizontal_score() + gap_extension_score;
-        return {previous_cell.horizontal_score(),
-                new_horizontal_score,
-                previous_cell.horizontal_score() + gap_open_score};
+        score_type horizontal_score = (zero_initialise_row) ? 0 : cell.horizontal_score() + gap_extension_score;
+        return {cell.horizontal_score(),
+                horizontal_score,
+                cell.horizontal_score() + gap_open_score};
     }
 };
 } // namespace seqan3::detail
