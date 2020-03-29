@@ -15,7 +15,8 @@
 #include <seqan3/alignment/pairwise/detail/type_traits.hpp>
 #include <seqan3/alignment/pairwise/align_result_selector.hpp>
 #include <seqan3/alignment/pairwise/alignment_result.hpp>
-#include <seqan3/range/views/drop.hpp>
+#include <seqan3/std/iterator>
+#include <seqan3/std/ranges>
 
 namespace seqan3::detail
 {
@@ -123,58 +124,124 @@ protected:
      * \param[in] sequence1 The first sequence.
      * \param[in] sequence2 The second sequence.
      */
-    template <typename sequence1_t, typename sequence2_t>
-    int32_t compute_matrix(sequence1_t & sequence1, sequence2_t & sequence2)
-    //!\cond
-        requires !traits_type::is_banded
-    //!\endcond
+    template <std::ranges::forward_range sequence1_t, std::ranges::forward_range sequence2_t>
+    auto compute_matrix(sequence1_t & sequence1, sequence2_t & sequence2)
     {
         // ---------------------------------------------------------------------
         // Initialisation phase: allocate memory and initialise first column.
         // ---------------------------------------------------------------------
 
-        auto local_matrix = this->acquire_alignment_matrix(sequence1, sequence2);
-        auto matrix_iterator = local_matrix.begin();
-        auto alignment_column = *matrix_iterator;
+        this->reset_tracker();
+        auto alignment_matrix = this->acquire_alignment_matrix(sequence1, sequence2);
+        auto matrix_iterator = alignment_matrix.begin();
 
-        // Initialise the first column.
-        *alignment_column.begin() = this->initialise_origin_cell();
-        for (auto cell : alignment_column | seqan3::views::drop(1))
-            cell = this->initialise_first_column_cell(cell);
+        initialise_column(*matrix_iterator);
 
         // ---------------------------------------------------------------------
         // Recursion phase: compute column-wise the alignment matrix.
         // ---------------------------------------------------------------------
 
+        std::remove_reference_t<decltype(*matrix_iterator)> alignment_column{};
         // Compute remaining matrix
         ++matrix_iterator; // Move to next column.
-        for (auto it_col = sequence1.begin(); it_col != sequence1.end(); ++it_col, ++matrix_iterator)
+        auto seq1_iterator = sequence1.begin();
+        for (size_t column_index = 1;
+             column_index < std::ranges::distance(sequence1);
+             ++column_index, ++seq1_iterator, ++matrix_iterator)
         {
-            alignment_column = *matrix_iterator;
-            auto alignment_column_iter = alignment_column.begin();
-
-            // Initialise first cell of current column.
-            auto cell = *alignment_column_iter;
-            typename traits_type::score_t diagonal = cell.optimal_score();
-            *alignment_column_iter = this->initialise_first_row_cell(cell);
-
-            ++alignment_column_iter;  // Move to next cell in column.
-            for (auto it_row = sequence2.begin(); it_row != sequence2.end(); ++it_row, ++alignment_column_iter)
-            {
-                auto cell = *alignment_column_iter;
-                typename traits_type::score_t next_diagonal = cell.optimal_score();
-                *alignment_column_iter = this->compute_inner_cell(diagonal,
-                                                                  cell,
-                                                                  this->scoring_scheme.score(*it_col, *it_row));
-                diagonal = next_diagonal;
-            }
+            compute_column(*matrix_iterator, seq1_iterator, sequence2.begin());
         }
 
         // ---------------------------------------------------------------------
-        // Wrap up phase: track score of last column
+        // Final phase: compute last column and report optimum.
         // ---------------------------------------------------------------------
 
-        return alignment_column[std::ranges::distance(sequence2)].optimal_score();
+        compute_last_column(*matrix_iterator, seq1_iterator, sequence2.begin());
+
+        return this->optimum();
+    }
+
+    template <typename first_column_t>
+    void initialise_column(first_column_t && first_column)
+    {
+        auto first_column_iter = std::ranges::begin(first_column);
+
+        *first_column_iter = this->track_cell(this->initialise_origin_cell());
+        ++first_column_iter;
+        for (size_t i = 1; i < std::ranges::size(first_column) - 1; ++i, ++first_column_iter)
+            *first_column_iter = this->track_cell(this->initialise_first_column_cell(*first_column_iter));
+
+        *first_column_iter = this->track_last_row_cell(this->initialise_first_column_cell(*first_column_iter));
+    }
+
+    template <std::ranges::forward_range column_t,
+              std::readable sequence1_iterator_t,
+              std::forward_iterator sequence2_iterator_t>
+    //!\cond
+        requires std::ranges::sized_range<column_t>
+    //!\endcond
+    void compute_column(column_t && alignment_column, sequence1_iterator_t seq1_iter, sequence2_iterator_t seq2_iter)
+    {
+        auto alignment_column_iter = alignment_column.begin();
+
+        // Initialise first cell of current column.
+        auto cell = *alignment_column_iter;
+        typename traits_type::score_t diagonal = cell.optimal_score();
+        *alignment_column_iter = this->track_cell(this->initialise_first_row_cell(cell));
+
+        ++alignment_column_iter;  // Move to next cell in column.
+        for (size_t row_index = 1;
+             row_index < std::ranges::size(alignment_column) - 1;
+             ++row_index, ++seq2_iter, ++alignment_column_iter)
+        {
+            auto cell = *alignment_column_iter;
+            typename traits_type::score_t next_diagonal = cell.optimal_score();
+            *alignment_column_iter = this->track_cell(this->compute_inner_cell(diagonal,
+                                                                               cell,
+                                                                               this->scoring_scheme.score(*seq1_iter,
+                                                                                                          *seq2_iter)));
+            diagonal = next_diagonal;
+        }
+
+        *alignment_column_iter = this->track_last_row_cell(
+                this->compute_inner_cell(diagonal,
+                                         *alignment_column_iter,
+                                         this->scoring_scheme.score(*seq1_iter, *seq2_iter)));
+    }
+
+    template <std::ranges::forward_range column_t,
+              std::readable sequence1_iterator_t,
+              std::forward_iterator sequence2_iterator_t>
+    //!\cond
+        requires std::ranges::sized_range<column_t>
+    //!\endcond
+    void compute_last_column(column_t && alignment_column,
+                             sequence1_iterator_t seq1_iter,
+                             sequence2_iterator_t seq2_iter)
+    {
+        auto alignment_column_iter = alignment_column.begin();
+
+        // Initialise first cell of current column.
+        auto cell = *alignment_column_iter;
+        typename traits_type::score_t diagonal = cell.optimal_score();
+        *alignment_column_iter = this->track_last_column_cell(this->initialise_first_row_cell(cell));
+
+        ++alignment_column_iter;  // Move to next cell in column.
+        for (size_t row_index = 1;
+             row_index < std::ranges::size(alignment_column) - 1;
+             ++row_index, ++seq2_iter, ++alignment_column_iter)
+        {
+            auto cell = *alignment_column_iter;
+            typename traits_type::score_t next_diagonal = cell.optimal_score();
+            *alignment_column_iter = this->track_last_column_cell(
+                    this->compute_inner_cell(diagonal, cell, this->scoring_scheme.score(*seq1_iter, *seq2_iter)));
+            diagonal = next_diagonal;
+        }
+
+        *alignment_column_iter = this->track_final_cell(
+                this->compute_inner_cell(diagonal,
+                                         *alignment_column_iter,
+                                         this->scoring_scheme.score(*seq1_iter, *seq2_iter)));
     }
 };
 } // namespace seqan3::detail

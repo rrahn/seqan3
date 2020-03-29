@@ -28,6 +28,7 @@
 #include <seqan3/alignment/pairwise/alignment_result.hpp>
 #include <seqan3/alignment/pairwise/detail/pairwise_alignment_algorithm.hpp>
 #include <seqan3/alignment/pairwise/detail/pairwise_alignment_policy_affine_gaps.hpp>
+#include <seqan3/alignment/pairwise/detail/pairwise_alignment_policy_optimum_tracker.hpp>
 #include <seqan3/alignment/pairwise/detail/pairwise_alignment_policy_score_matrix.hpp>
 #include <seqan3/alignment/pairwise/detail/type_traits.hpp>
 #include <seqan3/alignment/pairwise/detail/concept.hpp>
@@ -482,8 +483,9 @@ private:
         using matrix_policy_t = pairwise_alignment_policy_score_matrix<config_t>;
         // using gap_policy_t = typename select_gap_policy<traits_t>::type;
         using gap_policy_t = pairwise_alignment_policy_affine_gaps<config_t, false>;
+        using tacker_policy_t = pairwise_alignment_policy_optimum_tracker<config_t>;
 
-        return pairwise_alignment_algorithm<config_t, matrix_policy_t, gap_policy_t>{cfg};
+        return pairwise_alignment_algorithm<config_t, matrix_policy_t, gap_policy_t, tacker_policy_t>{cfg};
     }
 };
 
