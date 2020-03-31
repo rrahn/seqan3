@@ -13,6 +13,8 @@
 #pragma once
 
 #include <seqan3/alignment/configuration/align_config_aligned_ends.hpp>
+#include <seqan3/alignment/pairwise/detail/alignment_coordinate_matrix.hpp>
+#include <seqan3/core/type_traits/basic.hpp>
 
 namespace seqan3::detail
 {
@@ -24,9 +26,13 @@ private:
     using traits_type = alignment_configuration_traits<alignment_config_t>;
     using score_type = typename traits_type::score_t;
 
+    using coordinate_type = typename alignment_coordinate_matrix<true>::alignment_coordinate;
+
     score_type optimal_score{std::numeric_limits<score_type>::lowest()};
+    coordinate_type m_coordinate{std::numeric_limits<size_t>::lowest(), std::numeric_limits<size_t>::lowest()};
     bool track_last_row{};
     bool track_last_column{};
+
 protected:
     /*!\name Constructors, destructor and assignment
      * \{
@@ -52,56 +58,67 @@ protected:
     }
     //!\}
 
-    template <typename cell_t>
-    decltype(auto) track_cell(cell_t && cell) noexcept
+    template <typename cell_t, typename coordinate_t>
+    decltype(auto) track_cell(cell_t && cell, [[maybe_unused]] coordinate_t && coordinate) noexcept
     {
         if constexpr (track_every_cell)
-            exchange_max(cell);
+            exchange_max(cell, std::forward<coordinate_t>(coordinate));
 
         return std::forward<cell_t>(cell);
     }
 
-    template <typename cell_t>
-    decltype(auto) track_last_row_cell(cell_t && cell) noexcept
+    template <typename cell_t, typename coordinate_t>
+    decltype(auto) track_last_row_cell(cell_t && cell, [[maybe_unused]] coordinate_t && coordinate) noexcept
     {
         if (track_last_row)
-            exchange_max(cell);
+            exchange_max(cell, std::forward<coordinate_t>(coordinate));
 
         return std::forward<cell_t>(cell);
     }
 
-    template <typename cell_t>
-    decltype(auto) track_last_column_cell(cell_t && cell) noexcept
+    template <typename cell_t, typename coordinate_t>
+    decltype(auto) track_last_column_cell(cell_t && cell, [[maybe_unused]] coordinate_t && coordinate) noexcept
     {
         if (track_last_column)
-            exchange_max(cell);
+            exchange_max(cell, std::forward<coordinate_t>(coordinate));
 
         return std::forward<cell_t>(cell);
     }
 
-    template <typename cell_t>
-    decltype(auto) track_final_cell(cell_t && cell) noexcept
+    template <typename cell_t, typename coordinate_t>
+    decltype(auto) track_final_cell(cell_t && cell, [[maybe_unused]] coordinate_t && coordinate) noexcept
     {
-        exchange_max(cell);
+        exchange_max(cell, std::forward<coordinate_t>(coordinate));
         return std::forward<cell_t>(cell);
     }
 
-    score_type optimum() const noexcept
+    auto const & optimum_score() const noexcept
     {
         return optimal_score;
+    }
+
+    coordinate_type const & optimum_coordinate() const noexcept
+    {
+        return m_coordinate;
     }
 
     void reset_tracker() noexcept
     {
         optimal_score = std::numeric_limits<score_type>::lowest();
+        m_coordinate = coordinate_type{std::numeric_limits<size_t>::lowest(), std::numeric_limits<size_t>::lowest()};
     }
 
 private:
 
-    template <typename cell_t>
-    void exchange_max(cell_t && cell) noexcept
+    template <typename cell_t, typename coordinate_t>
+    void exchange_max(cell_t && cell, coordinate_t && coordinate) noexcept
     {
-        optimal_score = (cell.optimal_score() >= optimal_score) ? cell.optimal_score() : optimal_score;
+        if constexpr (decays_to_ignore_v<std::remove_reference_t<coordinate_t>>)
+            optimal_score = (cell.optimal_score() >= optimal_score) ? cell.optimal_score() : optimal_score;
+        else // update the coordinate if a new max was found and coordinate is enabled.
+            optimal_score = (cell.optimal_score() >= optimal_score)
+                          ? (m_coordinate = coordinate, cell.optimal_score())
+                          : optimal_score;
     }
 };
 } // namespace seqan3::detail

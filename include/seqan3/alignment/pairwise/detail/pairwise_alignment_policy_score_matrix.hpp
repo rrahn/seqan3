@@ -13,8 +13,11 @@
 #pragma once
 
 #include <seqan3/alignment/pairwise/detail/affine_cell_proxy.hpp>
+#include <seqan3/alignment/pairwise/detail/alignment_coordinate_matrix.hpp>
 #include <seqan3/range/views/repeat_n.hpp>
 #include <seqan3/range/views/zip.hpp>
+#include <seqan3/std/iterator>
+#include <seqan3/std/ranges>
 
 namespace seqan3::detail
 {
@@ -37,15 +40,25 @@ private:
         size_t current_column{};
         size_t end_column{};
 
+        using combined_column_t = decltype(views::zip(std::declval<std::vector<score_t> &>(),
+                                                      std::declval<std::vector<score_t> &>(),
+                                                      std::declval<vertical_column_t &>()));
+
+        static constexpr auto to_cell_proxy = std::views::transform([] (auto && tpl)
+        {
+            using fwd_tuple_t = decltype(tpl);
+            return affine_cell_proxy<remove_cvref_t<fwd_tuple_t>>{std::forward<fwd_tuple_t>(tpl)};
+        });
+
     public:
 
         /*!\name Associated types
          * \{
          */
-        // using value_type = zip_column_t;
-        // using reference = zip_column_t;
+        using value_type = decltype(std::declval<combined_column_t>() | to_cell_proxy);
+        using reference = value_type;
         using pointer = void;
-        using difference = void;
+        using difference_type = std::ptrdiff_t;
         using iterator_tag = std::forward_iterator_tag;
         //!\}
 
@@ -65,14 +78,10 @@ private:
         {}
         //!\}
 
-        auto operator*() const noexcept
+        auto operator*() const
         {
             return views::zip(host_ptr->optimal_column, host_ptr->horizontal_column, host_ptr->vertical_column)
-                 | std::views::transform([] (auto && tpl)
-                {
-                    using fwd_tuple_t = decltype(tpl);
-                    return affine_cell_proxy<remove_cvref_t<fwd_tuple_t>>{std::forward<fwd_tuple_t>(tpl)};
-                });
+                 | to_cell_proxy;
         }
 
         iterator & operator++() noexcept
@@ -131,15 +140,14 @@ public:
     ~single_column_score_matrix() = default; //!< Defaulted.
     //!\}
 
-    template <std::ranges::forward_range sequence1_t, std::ranges::forward_range sequence2_t>
-    void reset_matrix(sequence1_t && seq1, sequence2_t && seq2)
+    template <std::unsigned_integral column_count_t, std::unsigned_integral row_count_t>
+    void reset_matrix(column_count_t column_count, row_count_t row_count)
     {
-        size_t column_size = std::ranges::distance(seq2) + 1;
         optimal_column.clear();
-        optimal_column.resize(column_size, 0);
-        horizontal_column.resize(column_size, 0);
-        vertical_column = views::repeat_n(score_t{}, column_size);
-        columns_count = std::ranges::distance(seq1) + 1;
+        optimal_column.resize(row_count, 0);
+        horizontal_column.resize(row_count, 0);
+        vertical_column = views::repeat_n(score_t{}, row_count);
+        this->columns_count = column_count;
     }
 
     iterator begin()
@@ -160,26 +168,38 @@ private:
     using traits_type = alignment_configuration_traits<alignment_config_t>;
     using score_type = typename traits_type::score_t;
     using score_matrix_type = single_column_score_matrix<score_type>;
+    using coordinate_matrix_type = alignment_coordinate_matrix<true>;
 
     score_matrix_type score_matrix{};
 
     struct alignment_matrix
     {
     private:
+        using augmented_matrix_type = decltype(views::zip(std::declval<score_matrix_type &>(),
+                                                          std::declval<coordinate_matrix_type &>()));
+
         score_matrix_type * score_matrix_ptr{};
         score_matrix_type local_score_matrix{};
+        coordinate_matrix_type m_coordinate_matrix{};
+        augmented_matrix_type m_augmented_matrix{};
 
     public:
-        alignment_matrix() = default;
+        alignment_matrix() = delete;
         alignment_matrix(alignment_matrix const &) = default;
         alignment_matrix(alignment_matrix &&) = default;
         alignment_matrix & operator=(alignment_matrix const &) = default;
         alignment_matrix & operator=(alignment_matrix &&) = default;
 
-        alignment_matrix(score_matrix_type & global_matrix) : score_matrix_ptr{std::addressof(global_matrix)}
+        alignment_matrix(score_matrix_type & global_matrix,
+                         size_t column_count,
+                         size_t row_count) : score_matrix_ptr{std::addressof(global_matrix)}
         { // Exchange the cached matrix with the local one.
             assert(score_matrix_ptr != nullptr);
+
+            score_matrix_ptr->reset_matrix(column_count, row_count);
+            m_coordinate_matrix.reset_matrix(column_count, row_count);
             local_score_matrix = std::move(*score_matrix_ptr);
+            m_augmented_matrix = views::zip(local_score_matrix, m_coordinate_matrix);
         }
 
         ~alignment_matrix()
@@ -190,12 +210,12 @@ private:
 
         auto begin()
         {
-            return local_score_matrix.begin();
+            return m_augmented_matrix.begin();
         }
 
         auto end()
         {
-            return local_score_matrix.end();
+            return m_augmented_matrix.end();
         }
     };
 
@@ -234,8 +254,9 @@ protected:
     template <std::ranges::forward_range sequence1_t, std::ranges::forward_range sequence2_t>
     alignment_matrix acquire_alignment_matrix(sequence1_t && seq1, sequence2_t && seq2)
     {
-        score_matrix.reset_matrix(std::forward<sequence1_t>(seq1), std::forward<sequence2_t>(seq2));
-        return alignment_matrix{score_matrix};
+        size_t column_count = std::ranges::distance(seq1) + 1;
+        size_t row_count = std::ranges::distance(seq2) + 1;
+        return alignment_matrix{score_matrix, column_count, row_count};
     }
 };
 

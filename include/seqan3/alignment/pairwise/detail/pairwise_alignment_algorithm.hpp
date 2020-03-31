@@ -12,6 +12,7 @@
 
 #pragma once
 
+#include <seqan3/alignment/matrix/alignment_coordinate.hpp>
 #include <seqan3/alignment/pairwise/detail/type_traits.hpp>
 #include <seqan3/alignment/pairwise/align_result_selector.hpp>
 #include <seqan3/alignment/pairwise/alignment_result.hpp>
@@ -110,7 +111,15 @@ public:
         {
             result_t res{};
             res.id = idx;
-            res.score = compute_matrix(get<0>(sequence_pair), get<1>(sequence_pair));
+            compute_matrix(get<0>(sequence_pair), get<1>(sequence_pair));
+
+            if constexpr (traits_type::result_type_rank >= 0)
+                res.score = this->optimum_score();
+
+            if constexpr (traits_type::result_type_rank >= 1)
+                res.back_coordinate = alignment_coordinate{column_index_type{this->optimum_coordinate().column_index()},
+                                                           row_index_type{this->optimum_coordinate().row_index()}};
+
             results.emplace_back(std::move(res));
         }
         return results;
@@ -126,7 +135,7 @@ protected:
      * \param[in] sequence2 The second sequence.
      */
     template <std::ranges::forward_range sequence1_t, std::ranges::forward_range sequence2_t>
-    auto compute_matrix(sequence1_t & sequence1, sequence2_t & sequence2)
+    void compute_matrix(sequence1_t & sequence1, sequence2_t & sequence2)
     {
         // ---------------------------------------------------------------------
         // Initialisation phase: allocate memory and initialise first column.
@@ -136,77 +145,97 @@ protected:
         auto alignment_matrix = this->acquire_alignment_matrix(sequence1, sequence2);
         auto matrix_iterator = alignment_matrix.begin();
 
-        initialise_column(*matrix_iterator);
+        initialise_column(matrix_iterator);
 
         // ---------------------------------------------------------------------
         // Recursion phase: compute column-wise the alignment matrix.
         // ---------------------------------------------------------------------
 
-        std::remove_reference_t<decltype(*matrix_iterator)> alignment_column{};
-        // Compute remaining matrix
+        auto track_cell = [this] (auto && ...args)
+        {
+            return this->track_cell(std::forward<decltype(args)>(args)...);
+        };
+
+        auto track_last_row_cell = [this] (auto && ...args)
+        {
+            return this->track_last_row_cell(std::forward<decltype(args)>(args)...);
+        };
+
         ++matrix_iterator; // Move to next column.
         auto seq1_iterator = sequence1.begin();
-        for (size_t column_index = 1;
-             column_index < std::ranges::distance(sequence1);
-             ++column_index, ++seq1_iterator, ++matrix_iterator)
-        {
-            compute_column(*matrix_iterator,
-                           seq1_iterator,
-                           sequence2.begin(),
-                           [this] (auto && cell) { return this->track_cell(std::forward<decltype(cell)>(cell)); },
-                           [this] (auto && cell) { return this->track_last_row_cell(std::forward<decltype(cell)>(cell)); });
-        }
+        const size_t seq1_size = std::ranges::distance(sequence1);
+
+        for (size_t column_index = 1; column_index < seq1_size; ++column_index, ++seq1_iterator, ++matrix_iterator)
+            compute_column(matrix_iterator, seq1_iterator, sequence2.begin(), track_cell, track_last_row_cell);
 
         // ---------------------------------------------------------------------
         // Final phase: compute last column and report optimum.
         // ---------------------------------------------------------------------
 
-        compute_column(*matrix_iterator,
-                       seq1_iterator,
-                       sequence2.begin(),
-                       [this] (auto && cell) { return this->track_last_column_cell(std::forward<decltype(cell)>(cell)); },
-                       [this] (auto && cell) { return this->track_final_cell(std::forward<decltype(cell)>(cell)); });
+        auto track_last_column_cell = [this] (auto && ...args)
+        {
+            return this->track_last_column_cell(std::forward<decltype(args)>(args)...);
+        };
 
-        return this->optimum();
+        auto track_final_cell = [this] (auto && ...args)
+        {
+            return this->track_final_cell(std::forward<decltype(args)>(args)...);
+        };
+
+        compute_column(matrix_iterator, seq1_iterator, sequence2.begin(), track_last_column_cell, track_final_cell);
     }
 
-    template <std::ranges::forward_range first_column_t>
+    template <std::forward_iterator matrix_iter_t>
     //!\cond
-        requires std::ranges::sized_range<first_column_t>
+        requires std::ranges::sized_range<std::tuple_element_t<0, std::iter_reference_t<matrix_iter_t>>>
     //!\endcond
-    void initialise_column(first_column_t && first_column)
+    void initialise_column(matrix_iter_t matrix_iter)
     {
         // ---------------------------------------------------------------------
         // Initial phase: prepare column and initialise first cell
         // ---------------------------------------------------------------------
 
+        auto [first_column, coordinate_column] = *matrix_iter;
         auto first_column_iter = std::ranges::begin(first_column);
-        *first_column_iter = this->track_cell(this->initialise_origin_cell());
+        auto coordinate_iter = std::ranges::begin(coordinate_column);
+
+        *first_column_iter = this->track_cell(this->initialise_origin_cell(), *coordinate_iter);
 
         // ---------------------------------------------------------------------
         // Recursion phase: iterate over column and compute each cell
         // ---------------------------------------------------------------------
 
         ++first_column_iter;
-        for (size_t i = 1; i < std::ranges::size(first_column) - 1; ++i, ++first_column_iter)
-            *first_column_iter = this->track_cell(this->initialise_first_column_cell(*first_column_iter));
+        ++coordinate_iter;
+        for (size_t i = 1; i < std::ranges::size(first_column) - 1; ++i, ++first_column_iter, ++coordinate_iter)
+            *first_column_iter = this->track_cell(this->initialise_first_column_cell(*first_column_iter),
+                                                  *coordinate_iter);
 
         // ---------------------------------------------------------------------
         // Final phase: compute last cell in column
         // ---------------------------------------------------------------------
 
-        *first_column_iter = this->track_last_row_cell(this->initialise_first_column_cell(*first_column_iter));
+        *first_column_iter = this->track_last_row_cell(this->initialise_first_column_cell(*first_column_iter),
+                                                       *coordinate_iter);
     }
 
-    template <std::ranges::forward_range column_t,
+    template <std::forward_iterator matrix_iter_t,
               std::readable sequence1_iterator_t,
               std::forward_iterator sequence2_iterator_t,
-              std::invocable<std::ranges::range_rvalue_reference_t<column_t>> track_cell_fn_t,
-              std::invocable<std::ranges::range_rvalue_reference_t<column_t>> track_last_row_cell_fn_t>
+              std::invocable<
+                std::ranges::range_value_t<
+                    std::tuple_element_t<0, std::iter_reference_t<matrix_iter_t>>>,
+                std::ranges::range_reference_t<
+                    std::tuple_element_t<1, std::iter_reference_t<matrix_iter_t>>>> track_cell_fn_t,
+              std::invocable<
+                std::ranges::range_value_t<
+                    std::tuple_element_t<0, std::iter_reference_t<matrix_iter_t>>>,
+                std::ranges::range_reference_t<
+                    std::tuple_element_t<1, std::iter_reference_t<matrix_iter_t>>>> track_last_row_cell_fn_t>
     //!\cond
-        requires std::ranges::sized_range<column_t>
+        requires std::ranges::sized_range<std::tuple_element_t<0, std::iter_reference_t<matrix_iter_t>>>
     //!\endcond
-    void compute_column(column_t && alignment_column,
+    void compute_column(matrix_iter_t matrix_iter,
                         sequence1_iterator_t seq1_iter,
                         sequence2_iterator_t seq2_iter,
                         track_cell_fn_t && track_cell,
@@ -215,25 +244,29 @@ protected:
         // ---------------------------------------------------------------------
         // Initial phase: prepare column and initialise first cell
         // ---------------------------------------------------------------------
+        auto [alignment_column, coordinate_column] = *matrix_iter;
+        auto column_iter = std::ranges::begin(alignment_column);
+        auto coordinate_iter = std::ranges::begin(coordinate_column);
 
-        auto alignment_column_iter = alignment_column.begin();
-        auto cell = *alignment_column_iter;
+        auto cell = *column_iter;
         typename traits_type::score_t diagonal = cell.optimal_score();
-        *alignment_column_iter = track_cell(this->initialise_first_row_cell(cell));
+        *column_iter = track_cell(this->initialise_first_row_cell(cell), *coordinate_iter);
 
         // ---------------------------------------------------------------------
         // Recursion phase: iterate over column and compute each cell
         // ---------------------------------------------------------------------
 
-        ++alignment_column_iter;
-        for (size_t row_index = 1;
-             row_index < std::ranges::size(alignment_column) - 1;
-             ++row_index, ++seq2_iter, ++alignment_column_iter)
+        ++column_iter;
+        ++coordinate_iter;
+        const size_t column_size = std::ranges::size(alignment_column) - 1;
+        for (size_t row_index = 1; row_index < column_size; ++row_index, ++seq2_iter, ++column_iter, ++coordinate_iter)
         {
-            auto cell = *alignment_column_iter;
+            auto cell = *column_iter;
             typename traits_type::score_t next_diagonal = cell.optimal_score();
-            *alignment_column_iter = track_cell(
-                    this->compute_inner_cell(diagonal, cell, this->scoring_scheme.score(*seq1_iter, *seq2_iter)));
+            *column_iter = track_cell(this->compute_inner_cell(diagonal,
+                                                               cell,
+                                                               this->scoring_scheme.score(*seq1_iter, *seq2_iter)),
+                                      *coordinate_iter);
             diagonal = next_diagonal;
         }
 
@@ -241,10 +274,10 @@ protected:
         // Final phase: compute last cell in column
         // ---------------------------------------------------------------------
 
-        *alignment_column_iter = track_last_row_cell(
-                this->compute_inner_cell(diagonal,
-                                         *alignment_column_iter,
-                                         this->scoring_scheme.score(*seq1_iter, *seq2_iter)));
+        *column_iter = track_last_row_cell(this->compute_inner_cell(diagonal,
+                                                                    *column_iter,
+                                                                    this->scoring_scheme.score(*seq1_iter, *seq2_iter)),
+                                           *coordinate_iter);
     }
 };
 } // namespace seqan3::detail
