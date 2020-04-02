@@ -16,10 +16,60 @@
 
 #include <seqan3/alphabet/concept.hpp>
 #include <seqan3/core/concept/tuple.hpp>
+#include <seqan3/std/concepts>
 #include <seqan3/std/ranges>
 
 namespace seqan3::detail
 {
+
+template <typename t>
+SEQAN3_CONCEPT alignment_score_cell = std::copyable<std::remove_reference_t<t>> &&
+    requires (t & cell, t const & const_cell)
+{
+    { cell.optimal_score() };
+    { const_cell.optimal_score() };
+};
+
+template <typename t>
+SEQAN3_CONCEPT alignment_trace_cell = std::copyable<std::remove_reference_t<t>> &&
+    requires (t & cell, t const & const_cell)
+{
+    { cell.optimal_trace() };
+    { const_cell.optimal_trace() };
+};
+
+template <typename t>
+SEQAN3_CONCEPT alignment_score_trace_cell =
+    tuple_like<std::remove_reference_t<t>> &&
+    std::tuple_size_v<std::remove_reference_t<t>> == 2 &&
+    alignment_score_cell<std::tuple_element_t<0, std::remove_reference_t<t>>> &&
+    alignment_trace_cell<std::tuple_element_t<1, std::remove_reference_t<t>>>;
+
+template <typename t>
+SEQAN3_CONCEPT affine_score_cell = alignment_score_cell<t> && requires (t & cell, t const & const_cell)
+{
+    // Check access
+    { cell.horizontal_score() };
+    { const_cell.horizontal_score() };
+    { cell.vertical_score() };
+    { const_cell.vertical_score() };
+};
+
+template <typename t>
+SEQAN3_CONCEPT affine_trace_cell = alignment_trace_cell<t> && requires (t & cell, t const & const_cell)
+{
+    // Check access
+    { cell.horizontal_trace() };
+    { const_cell.horizontal_trace() };
+    { cell.vertical_trace() };
+    { const_cell.vertical_trace() };
+};
+
+template <typename t>
+SEQAN3_CONCEPT affine_score_trace_cell =
+    alignment_score_trace_cell<t> &&
+    affine_score_cell<std::tuple_element_t<0, remove_cvref_t<t>>> &&
+    affine_trace_cell<std::tuple_element_t<1, remove_cvref_t<t>>>;
 
 /*!\interface seqan3::detail::sequence_pair <>
  * \brief A helper concept to check if a type is a sequence pair.
