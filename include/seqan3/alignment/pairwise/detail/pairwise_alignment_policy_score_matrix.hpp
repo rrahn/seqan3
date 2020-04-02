@@ -14,6 +14,8 @@
 
 #include <seqan3/alignment/pairwise/detail/affine_cell_proxy.hpp>
 #include <seqan3/alignment/pairwise/detail/alignment_coordinate_matrix.hpp>
+#include <seqan3/alignment/pairwise/detail/combined_alignment_matrix.hpp>
+#include <seqan3/alignment/pairwise/detail/full_traceback_matrix.hpp>
 #include <seqan3/range/views/repeat_n.hpp>
 #include <seqan3/range/views/zip.hpp>
 #include <seqan3/std/iterator>
@@ -47,7 +49,7 @@ private:
         static constexpr auto to_cell_proxy = std::views::transform([] (auto && tpl)
         {
             using fwd_tuple_t = decltype(tpl);
-            return affine_cell_proxy<remove_cvref_t<fwd_tuple_t>>{std::forward<fwd_tuple_t>(tpl)};
+            return affine_score_proxy<remove_cvref_t<fwd_tuple_t>>{std::forward<fwd_tuple_t>(tpl)};
         });
 
     public:
@@ -167,19 +169,30 @@ class pairwise_alignment_policy_score_matrix
 private:
     using traits_type = alignment_configuration_traits<alignment_config_t>;
     using score_type = typename traits_type::score_t;
+    using trace_type = typename traits_type::trace_t;
     using score_matrix_type = single_column_score_matrix<score_type>;
+    using trace_matrix_type = full_traceback_matrix<trace_type>;
     using coordinate_matrix_type = alignment_coordinate_matrix<true>;
 
     score_matrix_type score_matrix{};
+    trace_matrix_type trace_matrix{};
 
     struct alignment_matrix
     {
     private:
-        using augmented_matrix_type = decltype(views::zip(std::declval<score_matrix_type &>(),
+        static_assert(std::is_nothrow_move_assignable_v<score_matrix_type>);
+        static_assert(std::is_nothrow_move_assignable_v<trace_matrix_type>);
+
+        using combined_matrix_type = combined_alignment_matrix<score_matrix_type &>;
+        // using combined_matrix_type = combined_alignment_matrix<score_matrix_type &, trace_matrix_type &>;
+
+        using augmented_matrix_type = decltype(views::zip(std::declval<combined_matrix_type>(),
                                                           std::declval<coordinate_matrix_type &>()));
 
         score_matrix_type * score_matrix_ptr{};
+        trace_matrix_type * trace_matrix_ptr{};
         score_matrix_type local_score_matrix{};
+        trace_matrix_type local_trace_matrix{};
         coordinate_matrix_type m_coordinate_matrix{};
         augmented_matrix_type m_augmented_matrix{};
 
@@ -191,21 +204,31 @@ private:
         alignment_matrix & operator=(alignment_matrix &&) = default;
 
         alignment_matrix(score_matrix_type & global_matrix,
+                         trace_matrix_type & global_trace_matrix,
                          size_t column_count,
-                         size_t row_count) : score_matrix_ptr{std::addressof(global_matrix)}
+                         size_t row_count) :
+            score_matrix_ptr{std::addressof(global_matrix)},
+            trace_matrix_ptr{std::addressof(global_trace_matrix)}
         { // Exchange the cached matrix with the local one.
             assert(score_matrix_ptr != nullptr);
 
             score_matrix_ptr->reset_matrix(column_count, row_count);
+            trace_matrix_ptr->reset_matrix(column_count, row_count);
             m_coordinate_matrix.reset_matrix(column_count, row_count);
+
             local_score_matrix = std::move(*score_matrix_ptr);
-            m_augmented_matrix = views::zip(local_score_matrix, m_coordinate_matrix);
+            local_trace_matrix = std::move(*trace_matrix_ptr);
+            m_augmented_matrix = views::zip(combined_matrix_type{local_score_matrix/*, local_trace_matrix*/},
+                                            m_coordinate_matrix);
         }
 
         ~alignment_matrix()
         { // Restore global matrix to keep buffer reallocation to a minimum.
             assert(score_matrix_ptr != nullptr);
+            assert(trace_matrix_ptr != nullptr);
+
             *score_matrix_ptr = std::move(local_score_matrix);
+            *trace_matrix_ptr = std::move(local_trace_matrix);
         }
 
         auto begin()
@@ -256,7 +279,7 @@ protected:
     {
         size_t column_count = std::ranges::distance(seq1) + 1;
         size_t row_count = std::ranges::distance(seq2) + 1;
-        return alignment_matrix{score_matrix, column_count, row_count};
+        return alignment_matrix{score_matrix, trace_matrix, column_count, row_count};
     }
 };
 
