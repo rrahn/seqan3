@@ -14,6 +14,7 @@
 
 #include <seqan3/alignment/configuration/align_config_aligned_ends.hpp>
 #include <seqan3/alignment/pairwise/detail/alignment_coordinate_matrix.hpp>
+#include <seqan3/alignment/pairwise/detail/concept.hpp>
 #include <seqan3/core/type_traits/basic.hpp>
 
 namespace seqan3::detail
@@ -110,7 +111,7 @@ protected:
 
 private:
 
-    template <typename cell_t, typename coordinate_t>
+    template <alignment_score_cell cell_t, typename coordinate_t>
     void exchange_max(cell_t && cell, coordinate_t && coordinate) noexcept
     {
         if constexpr (decays_to_ignore_v<std::remove_reference_t<coordinate_t>>)
@@ -118,6 +119,21 @@ private:
         else // update the coordinate if a new max was found and coordinate is enabled.
             optimal_score = (cell.optimal_score() >= optimal_score)
                           ? (m_coordinate = coordinate, cell.optimal_score())
+                          : optimal_score;
+    }
+
+    template <alignment_score_trace_cell cell_t, typename coordinate_t>
+    void exchange_max(cell_t && cell, coordinate_t && coordinate) noexcept
+    {
+        using std::get;
+
+        if constexpr (decays_to_ignore_v<std::remove_reference_t<coordinate_t>>)
+            optimal_score = (get<0>(cell).optimal_score() >= optimal_score)
+                          ? get<0>(cell).optimal_score()
+                          : optimal_score;
+        else // update the coordinate if a new max was found and coordinate is enabled.
+            optimal_score = (get<0>(cell).optimal_score() >= optimal_score)
+                          ? (m_coordinate = coordinate, get<0>(cell).optimal_score())
                           : optimal_score;
     }
 };
