@@ -199,7 +199,7 @@ protected:
         auto first_column_iter = std::ranges::begin(first_column);
         auto coordinate_iter = std::ranges::begin(coordinate_column);
 
-        *first_column_iter = this->track_cell(this->initialise_origin_cell(), *coordinate_iter);
+        *first_column_iter = this->track_cell(this->initialise_origin_cell(*first_column_iter), *coordinate_iter);
 
         // ---------------------------------------------------------------------
         // Recursion phase: iterate over column and compute each cell
@@ -218,6 +218,24 @@ protected:
         *first_column_iter = this->track_last_row_cell(this->initialise_first_column_cell(*first_column_iter),
                                                        *coordinate_iter);
     }
+
+    /*!\brief Receives the optimal score of an alignment cell.
+     * \tparam cell_t The type of the cell; must model seqan3::detail::alignment_score_cell.
+     *
+     * \param[in] cell The alignment cell to receive the optimal score from.
+     *
+     * \returns The optimal score stored in the given alignment cell.
+     */
+    template <typename cell_t>
+    auto optimal_score(cell_t && cell)
+    {
+        using std::get;
+
+        if constexpr (alignment_score_trace_cell<cell_t>)
+            return get<0>(cell).optimal_score();
+        else
+            return cell.optimal_score();
+    };
 
     template <std::forward_iterator matrix_iter_t,
               std::readable sequence1_iterator_t,
@@ -249,7 +267,7 @@ protected:
         auto coordinate_iter = std::ranges::begin(coordinate_column);
 
         auto cell = *column_iter;
-        typename traits_type::score_t diagonal = cell.optimal_score();
+        typename traits_type::score_t diagonal = optimal_score(cell);
         *column_iter = track_cell(this->initialise_first_row_cell(cell), *coordinate_iter);
 
         // ---------------------------------------------------------------------
@@ -262,7 +280,7 @@ protected:
         for (size_t row_index = 1; row_index < column_size; ++row_index, ++seq2_iter, ++column_iter, ++coordinate_iter)
         {
             auto cell = *column_iter;
-            typename traits_type::score_t next_diagonal = cell.optimal_score();
+            typename traits_type::score_t next_diagonal = optimal_score(cell);
             *column_iter = track_cell(this->compute_inner_cell(diagonal,
                                                                cell,
                                                                this->scoring_scheme.score(*seq1_iter, *seq2_iter)),
