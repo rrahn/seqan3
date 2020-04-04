@@ -30,6 +30,7 @@
 #include <seqan3/alignment/pairwise/detail/pairwise_alignment_policy_affine_gaps.hpp>
 #include <seqan3/alignment/pairwise/detail/pairwise_alignment_policy_optimum_tracker.hpp>
 #include <seqan3/alignment/pairwise/detail/pairwise_alignment_policy_score_matrix.hpp>
+#include <seqan3/alignment/pairwise/detail/pairwise_alignment_policy_scoring.hpp>
 #include <seqan3/alignment/pairwise/detail/type_traits.hpp>
 #include <seqan3/alignment/pairwise/detail/concept.hpp>
 #include <seqan3/alignment/pairwise/edit_distance_algorithm.hpp>
@@ -483,9 +484,9 @@ private:
         using matrix_policy_t = pairwise_alignment_policy_score_matrix<config_t>;
         // using gap_policy_t = typename select_gap_policy<traits_t>::type;
         using gap_policy_t = pairwise_alignment_policy_affine_gaps<config_t, false>;
-        using tacker_policy_t = pairwise_alignment_policy_optimum_tracker<config_t>;
+        using tracker_policy_t = pairwise_alignment_policy_optimum_tracker<config_t>;
 
-        return pairwise_alignment_algorithm<config_t, matrix_policy_t, gap_policy_t, tacker_policy_t>{cfg};
+        return pairwise_alignment_algorithm<config_t, matrix_policy_t, gap_policy_t, tracker_policy_t, policies_t...>{cfg};
     }
 };
 
@@ -503,8 +504,8 @@ constexpr function_wrapper_t alignment_configurator::configure_scoring_scheme(co
                                 typename traits_t::alignment_mode_t>,
                            typename traits_t::scoring_scheme_t>;
 
-    using scoring_scheme_policy_t = deferred_crtp_base<scoring_scheme_policy, alignment_scoring_scheme_t>;
-    return configure_free_ends_initialisation<function_wrapper_t, scoring_scheme_policy_t>(cfg);
+    using scoring_scheme_policy_t = pairwise_alignment_policy_scoring<config_t, alignment_scoring_scheme_t>;
+    return make_algorithm<function_wrapper_t, scoring_scheme_policy_t>(cfg);
 }
 
 // This function returns a std::function object which can capture runtime dependent alignment algorithm types through

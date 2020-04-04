@@ -18,6 +18,8 @@
 #include <seqan3/alignment/pairwise/detail/affine_cell_proxy.hpp>
 #include <seqan3/alignment/pairwise/detail/concept.hpp>
 #include <seqan3/alignment/scoring/gap_scheme.hpp>
+#include <seqan3/core/simd/concept.hpp>
+#include <seqan3/core/simd/simd_algorithm.hpp>
 
 namespace seqan3::detail
 {
@@ -66,8 +68,8 @@ protected:
         // Get the gap scheme from the config and choose -1 and -10 as default.
         gap_scheme my_gap{gap_score{-1}, seqan3::gap_open_score{-10}};
         auto && tmp_scheme = config.template value_or<align_cfg::gap>(my_gap);
-        gap_extension_score = static_cast<score_type>(tmp_scheme.get_gap_score());
-        gap_open_score = static_cast<score_type>(tmp_scheme.get_gap_open_score()) + gap_extension_score;
+        gap_extension_score = convert<score_type>(tmp_scheme.get_gap_score());
+        gap_open_score = convert<score_type>(tmp_scheme.get_gap_open_score()) + gap_extension_score;
 
         auto align_ends_cfg = config.template value_or<align_cfg::aligned_ends>(free_ends_none);
         zero_initialise_row = align_ends_cfg[0];
@@ -151,7 +153,7 @@ protected:
 ;
         diagonal_score = (diagonal_score < vertical_score)
                        ? vertical_score
-                       : (new_trace |= trace_directions::diagonal, diagonal_score);
+                       : (new_trace |= convert<trace_type>(trace_directions::diagonal), diagonal_score);
         diagonal_score = (diagonal_score < horizontal_score)
                        ? (new_trace = trace_cell.horizontal_trace(), horizontal_score)
                        : (new_trace |= trace_cell.horizontal_trace(), diagonal_score);
@@ -168,11 +170,11 @@ protected:
         trace_type next_horizontal_trace;
         // store the vertical_score and horizontal_score value in the next path
         vertical_score = (vertical_score < tmp)
-                       ? (next_vertical_trace = trace_directions::up_open, tmp)
-                       : (next_vertical_trace = trace_directions::up, vertical_score);
+                       ? (next_vertical_trace = convert<trace_type>(trace_directions::up_open), tmp)
+                       : (next_vertical_trace = convert<trace_type>(trace_directions::up), vertical_score);
         horizontal_score = (horizontal_score < tmp)
-                         ? (next_horizontal_trace = trace_directions::left_open, tmp)
-                         : (next_horizontal_trace = trace_directions::left, horizontal_score);
+                         ? (next_horizontal_trace = convert<trace_type>(trace_directions::left_open), tmp)
+                         : (next_horizontal_trace = convert<trace_type>(trace_directions::left), horizontal_score);
 
         return std::pair{affine_score_cell_type{diagonal_score, horizontal_score, vertical_score},
                          affine_trace_cell_type{new_trace, next_horizontal_trace, next_vertical_trace}};
@@ -191,7 +193,9 @@ protected:
     template <affine_score_cell affine_score_cell_t>
     affine_score_cell_type initialise_origin_cell(affine_score_cell_t && SEQAN3_DOXYGEN_ONLY(cell)) const noexcept
     {
-        return {0, (zero_initialise_row) ? 0 : gap_open_score, (zero_initialise_column) ? 0 : gap_open_score};
+        return {convert<score_type>(0),
+                (zero_initialise_row) ? convert<score_type>(0) : gap_open_score,
+                (zero_initialise_column) ? convert<score_type>(0) : gap_open_score};
     }
 
     //!\overload
@@ -201,9 +205,9 @@ protected:
         using std::get;
         return std::pair{
                 initialise_origin_cell(get<0>(cell)),
-                affine_trace_cell_type{trace_directions::none,
-                                       (zero_initialise_row) ? trace_directions::none : trace_directions::left_open,
-                                       (zero_initialise_column) ? trace_directions::none : trace_directions::up_open}};
+                affine_trace_cell_type{convert<trace_type>(trace_directions::none),
+                                       convert<trace_type>((zero_initialise_row) ? trace_directions::none : trace_directions::left_open),
+                                       convert<trace_type>((zero_initialise_column) ? trace_directions::none : trace_directions::up_open)}};
     }
 
     /*!\brief Initialises a cell of the first alignment matrix column.
@@ -222,7 +226,7 @@ protected:
     template <affine_score_cell affine_score_cell_t>
     affine_score_cell_type initialise_first_column_cell(affine_score_cell_t && cell) const noexcept
     {
-        score_type vertical_score = (zero_initialise_column) ? 0 : cell.vertical_score() + gap_extension_score;
+        score_type vertical_score = (zero_initialise_column) ? convert<score_type>(0) : cell.vertical_score() + gap_extension_score;
         return {cell.vertical_score(), cell.vertical_score() + gap_open_score, vertical_score};
     }
 
@@ -234,9 +238,9 @@ protected:
 
         return std::pair{
             initialise_first_column_cell(get<0>(cell)),
-            affine_trace_cell_type{get<1>(cell).vertical_trace(),
-                                   trace_directions::left_open,
-                                   (zero_initialise_column) ? trace_directions::none : trace_directions::up}};
+            affine_trace_cell_type{convert<trace_type>(get<1>(cell).vertical_trace()),
+                                   convert<trace_type>(trace_directions::left_open),
+                                   convert<trace_type>((zero_initialise_column) ? trace_directions::none : trace_directions::up)}};
     }
 
     /*!\brief Initialises the first cell of a alignment matrix column.
@@ -255,7 +259,7 @@ protected:
     template <affine_score_cell affine_score_cell_t>
     affine_score_cell_type initialise_first_row_cell(affine_score_cell_t && cell) const noexcept
     {
-        score_type horizontal_score = (zero_initialise_row) ? 0 : cell.horizontal_score() + gap_extension_score;
+        score_type horizontal_score = (zero_initialise_row) ? convert<score_type>(0) : cell.horizontal_score() + gap_extension_score;
         return {cell.horizontal_score(),
                 horizontal_score,
                 cell.horizontal_score() + gap_open_score};
@@ -269,9 +273,19 @@ protected:
 
         return std::pair{
             initialise_first_row_cell(get<0>(cell)),
-            affine_trace_cell_type{get<1>(cell).horizontal_trace(),
-                                   (zero_initialise_row) ? trace_directions::none : trace_directions::left,
-                                   trace_directions::up_open}};
+            affine_trace_cell_type{convert<trace_type>(get<1>(cell).horizontal_trace()),
+                                   convert<trace_type>((zero_initialise_row) ? trace_directions::none : trace_directions::left),
+                                   convert<trace_type>(trace_directions::up_open)}};
+    }
+
+private:
+    template <typename result_t, typename value_t>
+    decltype(auto) convert(value_t && value) const
+    {
+        if constexpr (simd_concept<result_t>)
+            return simd::fill<result_t>(std::forward<value_t>(value));
+        else
+            return std::forward<value_t>(value);
     }
 };
 } // namespace seqan3::detail

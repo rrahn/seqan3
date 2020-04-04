@@ -49,9 +49,9 @@ public:
     void reset_matrix(column_count_t const column_count, row_count_t const row_count)
     {
         optimal_matrix.clear();
-        optimal_matrix.resize(column_count * row_count, trace_directions::none);
-        horizontal_column.resize(row_count, trace_directions::none);
-        vertical_column = views::repeat_n(trace_directions::none, row_count);
+        optimal_matrix.resize(column_count * row_count, trace_t{});
+        horizontal_column.resize(row_count, trace_t{});
+        vertical_column = views::repeat_n(trace_t{}, row_count);
         this->columns_count = column_count;
         this->rows_count = row_count;
     }

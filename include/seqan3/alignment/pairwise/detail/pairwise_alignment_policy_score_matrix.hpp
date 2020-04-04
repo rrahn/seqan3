@@ -16,6 +16,7 @@
 #include <seqan3/alignment/pairwise/detail/alignment_coordinate_matrix.hpp>
 #include <seqan3/alignment/pairwise/detail/combined_alignment_matrix.hpp>
 #include <seqan3/alignment/pairwise/detail/full_traceback_matrix.hpp>
+#include <seqan3/range/container/aligned_allocator.hpp>
 #include <seqan3/range/views/repeat_n.hpp>
 #include <seqan3/range/views/zip.hpp>
 #include <seqan3/std/iterator>
@@ -29,9 +30,10 @@ class single_column_score_matrix
 {
 private:
     using vertical_column_t = decltype(views::repeat_n(score_t{}, 1));
+    using column_type = std::vector<score_t, aligned_allocator<score_t>>;
 
-    std::vector<score_t> optimal_column{};
-    std::vector<score_t> horizontal_column{};
+    column_type optimal_column{};
+    column_type horizontal_column{};
     vertical_column_t vertical_column{};
     size_t columns_count{};
 
@@ -42,8 +44,8 @@ private:
         size_t current_column{};
         size_t end_column{};
 
-        using combined_column_t = decltype(views::zip(std::declval<std::vector<score_t> &>(),
-                                                      std::declval<std::vector<score_t> &>(),
+        using combined_column_t = decltype(views::zip(std::declval<column_type &>(),
+                                                      std::declval<column_type &>(),
                                                       std::declval<vertical_column_t &>()));
 
         static constexpr auto to_cell_proxy = std::views::transform([] (auto && tpl)
@@ -146,8 +148,8 @@ public:
     void reset_matrix(column_count_t column_count, row_count_t row_count)
     {
         optimal_column.clear();
-        optimal_column.resize(row_count, 0);
-        horizontal_column.resize(row_count, 0);
+        optimal_column.resize(row_count, score_t{0});
+        horizontal_column.resize(row_count, score_t{0});
         vertical_column = views::repeat_n(score_t{}, row_count);
         this->columns_count = column_count;
     }
@@ -192,7 +194,7 @@ private:
         score_matrix_type * score_matrix_ptr{};
         trace_matrix_type * trace_matrix_ptr{};
         score_matrix_type local_score_matrix{};
-        trace_matrix_type local_trace_matrix{};
+        // trace_matrix_type local_trace_matrix{};
         coordinate_matrix_type m_coordinate_matrix{};
         augmented_matrix_type m_augmented_matrix{};
 
@@ -213,11 +215,11 @@ private:
             assert(score_matrix_ptr != nullptr);
 
             score_matrix_ptr->reset_matrix(column_count, row_count);
-            trace_matrix_ptr->reset_matrix(column_count, row_count);
+            // trace_matrix_ptr->reset_matrix(column_count, row_count);
             m_coordinate_matrix.reset_matrix(column_count, row_count);
 
             local_score_matrix = std::move(*score_matrix_ptr);
-            local_trace_matrix = std::move(*trace_matrix_ptr);
+            // local_trace_matrix = std::move(*trace_matrix_ptr);
             m_augmented_matrix = views::zip(combined_matrix_type{local_score_matrix/*, local_trace_matrix*/},
                                             m_coordinate_matrix);
         }
@@ -228,7 +230,7 @@ private:
             assert(trace_matrix_ptr != nullptr);
 
             *score_matrix_ptr = std::move(local_score_matrix);
-            *trace_matrix_ptr = std::move(local_trace_matrix);
+            // *trace_matrix_ptr = std::move(local_trace_matrix);
         }
 
         auto begin()
