@@ -12,6 +12,8 @@
 
 #pragma once
 
+#include <optional>
+
 #include <seqan3/core/detail/pack_algorithm.hpp>
 #include <seqan3/core/simd/concept.hpp>
 #include <seqan3/core/simd/simd_algorithm.hpp>
@@ -246,11 +248,10 @@ public:
         }
 
         // If the batch is not full, i.e. less than chunk_size many sequences, then fill them up with dummy sequences.
-        for (; seq_id < chunk_size; ++seq_id)
-        {
-            cached_iter[seq_id] = std::ranges::begin(this_view.empty_inner_range);
-            cached_sentinel[seq_id] = std::ranges::end(this_view.empty_inner_range);
-        }
+        // for (; seq_id < chunk_size; ++seq_id)
+        // {
+        //     cached_iter[seq_id].clear();
+        // }
         // Check if this is the final chunk already.
         final_chunk = all_iterators_reached_sentinel();
 
@@ -425,7 +426,8 @@ private:
 
         return std::ranges::all_of(views::zip(cached_iter, cached_sentinel), [] (auto && iterator_sentinel_pair)
         {
-            return get<0>(iterator_sentinel_pair) == get<1>(iterator_sentinel_pair);
+            return  !get<0>(iterator_sentinel_pair).has_value() ||
+                    get<0>(iterator_sentinel_pair).value() == get<1>(iterator_sentinel_pair);
         });
     }
 
@@ -445,14 +447,14 @@ private:
         simd_t simd_column{};
         for (size_t idx = 0u; idx < chunk_size; ++idx)
         {
-            if (cached_iter[idx] == cached_sentinel[idx])
+            if (!cached_iter[idx].has_value() || cached_iter[idx].value() == cached_sentinel[idx])
             {
                 simd_column[idx] = this_view->padding_value;
             }
             else
             {
-                simd_column[idx] = static_cast<scalar_type>(seqan3::to_rank(*cached_iter[idx]));
-                ++cached_iter[idx];
+                simd_column[idx] = static_cast<scalar_type>(seqan3::to_rank(*cached_iter[idx].value()));
+                ++cached_iter[idx].value();
             }
         };
         return simd_column;
@@ -473,13 +475,14 @@ private:
     {
         size_t max_distance = 0;
         for (auto && [it, sent] : views::zip(iterators_before_update, cached_sentinel))
-            max_distance = std::max<size_t>(std::ranges::distance(it, sent), max_distance);
+            max_distance = (it.has_value()) ? std::max<size_t>(std::ranges::distance(it.value(), sent), max_distance)
+                                            : max_distance;
 
         assert(max_distance > 0);
         assert(max_distance <= (total_chunks * chunk_size));
 
         --max_distance;
-        final_chunk_pos = max_distance  / chunk_size;
+        final_chunk_pos = max_distance / chunk_size;
         // first we should be able to check the chunk position.
         final_chunk_size = (max_distance % chunk_size) + 1;
     }
@@ -525,17 +528,21 @@ private:
             for (uint8_t chunk_pos = 0; chunk_pos < chunks_per_load; ++chunk_pos)
             {
                 uint8_t pos = chunk_pos * chunk_size + sequence_pos; // matrix entry to fill
-                if (cached_sentinel[sequence_pos] - cached_iter[sequence_pos] >= max_size)
+                if (cached_iter[sequence_pos].has_value() &&
+                    cached_sentinel[sequence_pos] - cached_iter[sequence_pos].value() >= max_size)
                 { // Not in final block, thus load directly from memory.
-                    matrix[pos] = simd::load<max_simd_type>(std::addressof(*cached_iter[sequence_pos]));
-                    std::advance(cached_iter[sequence_pos], max_size);
+                    matrix[pos] = simd::load<max_simd_type>(std::addressof(*(cached_iter[sequence_pos].value())));
+                    std::advance(cached_iter[sequence_pos].value(), max_size);
                 }
                 else  // Loads the final block byte wise in order to not load from uninitialised memory.
                 {
                     matrix[pos] = simd::fill<max_simd_type>(~0);
-                    auto & sequence_it = cached_iter[sequence_pos];
-                    for (int8_t idx = 0; sequence_it != cached_sentinel[sequence_pos]; ++sequence_it, ++idx)
-                        matrix[pos][idx] = seqan3::to_rank(*sequence_it);
+                    if (cached_iter[sequence_pos].has_value())
+                    {
+                        auto & sequence_it = cached_iter[sequence_pos].value();
+                        for (int8_t idx = 0; sequence_it != cached_sentinel[sequence_pos]; ++sequence_it, ++idx)
+                            matrix[pos][idx] = seqan3::to_rank(*sequence_it);
+                    }
                 }
             }
         }
@@ -571,7 +578,7 @@ private:
     }
 
     //!\brief Array containing the cached sequence iterators over the inner ranges.
-    std::array<std::ranges::iterator_t<inner_range_type>, chunk_size> cached_iter{};
+    std::array<std::optional<std::ranges::iterator_t<inner_range_type>>, chunk_size> cached_iter{};
     //!\brief Array containing the cached sequence sentinels over the inner ranges.
     std::array<std::ranges::sentinel_t<inner_range_type>, chunk_size> cached_sentinel{};
     //!\brief Pointer to the associated range.
