@@ -29,7 +29,15 @@ private:
 
     using coordinate_type = typename alignment_coordinate_matrix<true>::alignment_coordinate;
 
-    score_type optimal_score{std::numeric_limits<score_type>::lowest()};
+    static constexpr score_type infinity = [] () constexpr
+    {
+        if constexpr (simd_concept<score_type>)
+            return simd::fill<score_type>(std::numeric_limits<typename simd_traits<score_type>::scalar_type>::lowest());
+        else
+            return std::numeric_limits<score_type>::lowest();
+    }();
+
+    score_type optimal_score{infinity};
     coordinate_type m_coordinate{std::numeric_limits<size_t>::lowest(), std::numeric_limits<size_t>::lowest()};
     bool track_last_row{};
     bool track_last_column{};
@@ -105,7 +113,7 @@ protected:
 
     void reset_tracker() noexcept
     {
-        optimal_score = std::numeric_limits<score_type>::lowest();
+        optimal_score = infinity;
         m_coordinate = coordinate_type{std::numeric_limits<size_t>::lowest(), std::numeric_limits<size_t>::lowest()};
     }
 
