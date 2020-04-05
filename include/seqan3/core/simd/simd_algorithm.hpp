@@ -364,6 +364,7 @@ constexpr void transpose(std::array<simd_t, simd_traits<simd_t>::length> & matri
 }
 
 //!\cond
+// SSE4 implementation
 template <simd::simd_concept simd_t>
     requires detail::is_builtin_simd_v<simd_t> &&
              detail::is_native_builtin_simd_v<simd_t> &&
@@ -372,6 +373,16 @@ template <simd::simd_concept simd_t>
 constexpr void transpose(std::array<simd_t, simd_traits<simd_t>::length> & matrix)
 {
     detail::transpose_matrix_sse4(matrix);
+}
+// AVX2 implementation
+template <simd::simd_concept simd_t>
+    requires detail::is_builtin_simd_v<simd_t> &&
+             detail::is_native_builtin_simd_v<simd_t> &&
+             simd_traits<simd_t>::max_length == 32 &&
+             simd_traits<simd_t>::length == 32
+constexpr void transpose(std::array<simd_t, simd_traits<simd_t>::length> & matrix)
+{
+    detail::transpose_matrix_avx2(matrix);
 }
 //!\endcond
 
