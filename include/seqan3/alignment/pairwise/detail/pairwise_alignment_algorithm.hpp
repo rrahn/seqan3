@@ -36,7 +36,12 @@ private:
     using traits_type = alignment_configuration_traits<alignment_config_t>;
     using scoring_scheme_type =  typename traits_type::scoring_scheme_t;
 
+    using duration_type = typename std::chrono::high_resolution_clock::duration;
+
     // scoring_scheme_type scoring_scheme;
+    duration_type duration_prep{};
+    duration_type duration_algo{};
+    duration_type duration_res{};
 
 public:
     /*!\name Constructors, destructor and assignment
@@ -47,11 +52,20 @@ public:
     pairwise_alignment_algorithm(pairwise_alignment_algorithm &&) = default; //!< Defaulted.
     pairwise_alignment_algorithm & operator=(pairwise_alignment_algorithm const &) = default; //!< Defaulted.
     pairwise_alignment_algorithm & operator=(pairwise_alignment_algorithm &&) = default; //!< Defaulted.
-    ~pairwise_alignment_algorithm() = default; //!< Defaulted.
+    ~pairwise_alignment_algorithm()
+    {
+        // auto end_time = std::chrono::high_resolution_clock::now();
+        std::cout << "Preparation:    " << std::chrono::duration_cast<std::chrono::milliseconds>(duration_prep).count() << " ms\n";
+	    std::cout << "Algorithm:      " << std::chrono::duration_cast<std::chrono::milliseconds>(duration_algo).count() << " ms\n";
+	    std::cout << "Extract result: " << std::chrono::duration_cast<std::chrono::milliseconds>(duration_res).count()  << " ms\n";
+
+    } //= default; //!< Defaulted.
 
     pairwise_alignment_algorithm(alignment_config_t const & config) : policies_t{config}...
     {
         // scoring_scheme = seqan3::get<align_cfg::scoring>(config).value;
+        // gap_extension = this->gap_extension_score;
+        // gap_open = this->gap_open_score;
     }
     //!\}
 
@@ -140,6 +154,7 @@ public:
         static_assert(simd_concept<typename traits_type::score_t>, "Expected simd score type.");
         static_assert(simd_concept<typename traits_type::trace_t>, "Expected simd trace type.");
 
+        auto start = std::chrono::high_resolution_clock::now();
         // Extract the batch of sequences for the first and the second sequence.
         auto seq1_collection = indexed_sequence_pairs | views::get<0> | views::get<0>;
         auto seq2_collection = indexed_sequence_pairs | views::get<0> | views::get<1>;
@@ -148,14 +163,20 @@ public:
         auto simd_seq1_collection = convert_batch_of_sequences_to_simd_vector(seq1_collection);
         auto simd_seq2_collection = convert_batch_of_sequences_to_simd_vector(seq2_collection);
 
+        duration_prep += std::chrono::high_resolution_clock::now() - start;
+
         // max_size_in_collection = std::pair{simd_seq1_collection.size(), simd_seq2_collection.size()};
         // Reset the alignment state's optimum between executions of the alignment algorithm.
         // this->alignment_state.reset_optimum();
+        start = std::chrono::high_resolution_clock::now();
 
-        compute_matrix(simd_seq1_collection, simd_seq2_collection);
+        auto optimum_score = compute_matrix(simd_seq1_collection, simd_seq2_collection);
+
+        duration_algo += std::chrono::high_resolution_clock::now() - start;
 
         // TODO: Iterate over the alignment.
         // return make_alignment_result(indexed_sequence_pairs);
+        start = std::chrono::high_resolution_clock::now();
 
         using sequence_pairs_t = std::tuple_element_t<0, std::ranges::range_value_t<indexed_sequence_pairs_t>>;
         using sequence1_t = std::tuple_element_t<0, sequence_pairs_t>;
@@ -165,6 +186,7 @@ public:
         using std::get;
 
         std::vector<alignment_result<result_t>> results{};
+        results.reserve(simd::simd_traits<typename traits_type::score_t>::length);
         size_t index = 0;
         for (auto && [sequence_pair, idx] : indexed_sequence_pairs)
         {
@@ -172,7 +194,7 @@ public:
             res.id = idx;
 
             if constexpr (traits_type::result_type_rank >= 0)
-                res.score = this->optimum_score()[index];
+                res.score = optimum_score[index];
 
             ++index;
 
@@ -182,6 +204,7 @@ public:
 
             results.emplace_back(std::move(res));
         }
+        duration_res += std::chrono::high_resolution_clock::now() - start;
         return results;
     }
 
@@ -201,13 +224,17 @@ protected:
      * column of the batch as a simd vector.
      */
     template <std::ranges::forward_range sequence_range_t>
+    //!\cond
+        requires std::ranges::forward_range<std::ranges::range_reference_t<sequence_range_t>>
+    //!\endcond
     constexpr auto convert_batch_of_sequences_to_simd_vector(sequence_range_t & sequences)
     {
-        assert(static_cast<size_t>(std::ranges::distance(sequences)) <= traits_t::alignments_per_vector);
+        assert(static_cast<size_t>(std::ranges::distance(sequences)) <= traits_type::alignments_per_vector);
 
         using simd_score_t = typename traits_type::score_t;
 
         std::vector<simd_score_t, aligned_allocator<simd_score_t, alignof(simd_score_t)>> simd_sequence{};
+        simd_sequence.reserve(std::ranges::distance(*std::ranges::begin(sequences)));
 
         for (auto && simd_vector_chunk : sequences | views::to_simd<simd_score_t>(traits_type::padding_symbol))
             for (auto && simd_vector : simd_vector_chunk)
@@ -215,6 +242,14 @@ protected:
 
         return simd_sequence;
     }
+
+    using score_t = typename traits_type::score_t;
+
+    std::vector<score_t, seqan3::aligned_allocator<score_t>> optimal_column{};
+    std::vector<score_t, seqan3::aligned_allocator<score_t>> horizontal_column{};
+
+    // score_t gap_extension{};
+    // score_t gap_open{};
 
     /*!\brief Compute the alignment by iterating over the alignment matrix in a column wise manner.
      * \tparam sequence1_t The type of the first sequence.
@@ -224,55 +259,131 @@ protected:
      * \param[in] sequence2 The second sequence.
      */
     template <std::ranges::forward_range sequence1_t, std::ranges::forward_range sequence2_t>
-    void compute_matrix(sequence1_t & sequence1, sequence2_t & sequence2)
+    auto compute_matrix(sequence1_t & sequence1, sequence2_t & sequence2)
     {
+        using score_t = typename traits_type::score_t;
+
+        score_t gap_extension{simd::fill<score_t>(-1)};
+        score_t gap_open{simd::fill<score_t>(-11)};
+        score_t match{seqan3::simd::fill<score_t>(6)};
+        score_t mismatch{seqan3::simd::fill<score_t>(-4)};
+
+        decltype(this->scoring_scheme) scoring_scheme{this->scoring_scheme};
+
+        // this->reset_tracker();
+        // auto alignment_matrix = this->acquire_alignment_matrix(sequence1, sequence2);
+        // auto matrix_iterator = alignment_matrix.begin();
+
+        // std::vector<score_t, seqan3::aligned_allocator<score_t>> optimal_column{};
+        // std::vector<score_t, seqan3::aligned_allocator<score_t>> horizontal_column{};
+
+        // Initialise matrix
+        optimal_column.clear();
+        horizontal_column.clear();
+        optimal_column.resize(sequence2.size() + 1, seqan3::simd::fill<score_t>(0));
+        horizontal_column.resize(sequence2.size() + 1, seqan3::simd::fill<score_t>(0));
+
+        score_t diagonal{seqan3::simd::fill<score_t>(0)};
+        score_t vertical{gap_open};
+        horizontal_column[0] = gap_open;
+
+        // Initialise the first column.
+        for (auto && [opt, hor] : seqan3::views::zip(optimal_column, horizontal_column) | seqan3::views::drop(1))
+        {
+            opt = vertical;
+            hor = opt + gap_open;
+            vertical += gap_extension;
+        }
+
+        // Compute the matrix
+        for (auto it_col = sequence1.begin(); it_col != sequence1.end(); ++it_col)
+        {
+            // Initialise first cell of optimal_column.
+            auto opt_it = optimal_column.begin();
+            auto hor_it = horizontal_column.begin();
+
+            diagonal = *opt_it;  // cache the diagonal for next cell
+            *opt_it = *hor_it; // initialise the horizontal score
+            *hor_it += gap_extension; // initialise the horizontal score
+            vertical = *opt_it + gap_open; // initialise the vertical value
+            // std::cout << "vert: " << *opt_it << "\n";
+            // Go to next cell.
+            ++opt_it;
+            ++hor_it;
+            // std::cout << "diagonal: ";
+            for (auto it_row = sequence2.begin(); it_row != sequence2.end(); ++it_row, ++opt_it, ++hor_it)
+            {
+                // Precompute the diagonal score.
+                score_t horizontal = *hor_it;
+                // score_t tmp = diagonal + (((*it_col ^ *it_row) <= seqan3::simd::fill<score_t>(0)) ? match : mismatch);
+                score_t tmp = diagonal + scoring_scheme.score(*it_col, *it_row); //(((*it_col ^ *it_row) <= seqan3::simd::fill<score_t>(0)) ? match : mismatch);
+
+                // std::cout << diagonal << ": " <<   tmp << " ";
+
+                tmp = (tmp < vertical) ? vertical : tmp;
+                tmp = (tmp < horizontal) ? horizontal : tmp;
+
+                // Store the current max score.
+                diagonal = *opt_it; // cache the next diagonal before writing it
+                *opt_it = tmp; // store the temporary result
+
+                tmp += gap_open;  // add gap open costs
+                vertical += gap_extension;
+                horizontal += gap_extension;
+
+                // store the vertical and horizontal value in the next path
+                vertical = (vertical < tmp) ? tmp : vertical;
+                *hor_it = (horizontal < tmp) ? tmp : horizontal;
+            }
+        }
+
+        return optimal_column.back();
         // ---------------------------------------------------------------------
         // Initialisation phase: allocate memory and initialise first column.
         // ---------------------------------------------------------------------
 
-        this->reset_tracker();
-        auto alignment_matrix = this->acquire_alignment_matrix(sequence1, sequence2);
-        auto matrix_iterator = alignment_matrix.begin();
-        decltype(this->scoring_scheme) local_scoring_scheme{this->scoring_scheme};
+    //     this->reset_tracker();
+    //     auto alignment_matrix = this->acquire_alignment_matrix(sequence1, sequence2);
+    //     auto matrix_iterator = alignment_matrix.begin();
 
-        initialise_column(matrix_iterator);
+    //     initialise_column(matrix_iterator);
 
-        // ---------------------------------------------------------------------
-        // Recursion phase: compute column-wise the alignment matrix.
-        // ---------------------------------------------------------------------
+    //     // ---------------------------------------------------------------------
+    //     // Recursion phase: compute column-wise the alignment matrix.
+    //     // ---------------------------------------------------------------------
 
-        auto track_cell = [this] (auto && ...args)
-        {
-            return this->track_cell(std::forward<decltype(args)>(args)...);
-        };
+    //     auto track_cell = [this] (auto && ...args)
+    //     {
+    //         return this->track_cell(std::forward<decltype(args)>(args)...);
+    //     };
 
-        auto track_last_row_cell = [this] (auto && ...args)
-        {
-            return this->track_last_row_cell(std::forward<decltype(args)>(args)...);
-        };
+    //     auto track_last_row_cell = [this] (auto && ...args)
+    //     {
+    //         return this->track_last_row_cell(std::forward<decltype(args)>(args)...);
+    //     };
 
-        ++matrix_iterator; // Move to next column.
-        auto seq1_iterator = sequence1.begin();
-        const size_t seq1_size = std::ranges::distance(sequence1);
+    //     ++matrix_iterator; // Move to next column.
+    //     auto seq1_iterator = sequence1.begin();
+    //     const size_t seq1_size = std::ranges::distance(sequence1);
 
-        for (size_t column_index = 1; column_index < seq1_size; ++column_index, ++seq1_iterator, ++matrix_iterator)
-            compute_column(matrix_iterator, seq1_iterator, sequence2.begin(), track_cell, track_last_row_cell, local_scoring_scheme);
+    //     for (size_t column_index = 1; column_index < seq1_size; ++column_index, ++seq1_iterator, ++matrix_iterator)
+    //         compute_column(matrix_iterator, seq1_iterator, sequence2.begin(), track_cell, track_last_row_cell);
 
-        // ---------------------------------------------------------------------
-        // Final phase: compute last column and report optimum.
-        // ---------------------------------------------------------------------
+    //     // ---------------------------------------------------------------------
+    //     // Final phase: compute last column and report optimum.
+    //     // ---------------------------------------------------------------------
 
-        auto track_last_column_cell = [this] (auto && ...args)
-        {
-            return this->track_last_column_cell(std::forward<decltype(args)>(args)...);
-        };
+    //     auto track_last_column_cell = [this] (auto && ...args)
+    //     {
+    //         return this->track_last_column_cell(std::forward<decltype(args)>(args)...);
+    //     };
 
-        auto track_final_cell = [this] (auto && ...args)
-        {
-            return this->track_final_cell(std::forward<decltype(args)>(args)...);
-        };
+    //     auto track_final_cell = [this] (auto && ...args)
+    //     {
+    //         return this->track_final_cell(std::forward<decltype(args)>(args)...);
+    //     };
 
-        compute_column(matrix_iterator, seq1_iterator, sequence2.begin(), track_last_column_cell, track_final_cell, local_scoring_scheme);
+    //     compute_column(matrix_iterator, seq1_iterator, sequence2.begin(), track_last_column_cell, track_final_cell);
     }
 
     template <std::forward_iterator matrix_iter_t>
@@ -339,8 +450,7 @@ protected:
                 std::ranges::range_value_t<
                     std::tuple_element_t<0, std::iter_reference_t<matrix_iter_t>>>,
                 std::ranges::range_reference_t<
-                    std::tuple_element_t<1, std::iter_reference_t<matrix_iter_t>>>> track_last_row_cell_fn_t,
-               typename scoring_scheme_t>
+                    std::tuple_element_t<1, std::iter_reference_t<matrix_iter_t>>>> track_last_row_cell_fn_t>
     //!\cond
         requires std::ranges::sized_range<std::tuple_element_t<0, std::iter_reference_t<matrix_iter_t>>>
     //!\endcond
@@ -348,12 +458,14 @@ protected:
                         sequence1_iterator_t seq1_iter,
                         sequence2_iterator_t seq2_iter,
                         track_cell_fn_t && track_cell,
-                        track_last_row_cell_fn_t && track_last_row_cell,
-                        scoring_scheme_t & scoring_scheme)
+                        track_last_row_cell_fn_t && track_last_row_cell)
     {
         // ---------------------------------------------------------------------
         // Initial phase: prepare column and initialise first cell
         // ---------------------------------------------------------------------
+
+        decltype(this->scoring_scheme) scoring_scheme{this->scoring_scheme};
+
         auto [alignment_column, coordinate_column] = *matrix_iter;
         auto column_iter = std::ranges::begin(alignment_column);
         auto coordinate_iter = std::ranges::begin(coordinate_column);
