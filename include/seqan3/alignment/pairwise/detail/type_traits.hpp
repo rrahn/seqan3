@@ -46,7 +46,7 @@ template <typename sequence_pairs_t>
 struct chunked_indexed_sequence_pairs
 {
     //!\brief The transformed type that models seqan3::detail::indexed_sequence_pair_range.
-    using type = decltype(views::zip(std::declval<sequence_pairs_t>(), std::views::iota(0)) | views::chunk(1));
+    using type = decltype(views::zip(std::declval<sequence_pairs_t>(), std::views::iota(0, 1)) | views::chunk(1));
 };
 
 /*!\brief A traits type for the alignment algorithm that exposes static information stored within the alignment
