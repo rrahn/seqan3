@@ -30,7 +30,7 @@ class single_column_score_matrix
 {
 private:
     using vertical_column_t = decltype(views::repeat_n(score_t{}, 1));
-    using column_type = std::vector<score_t, aligned_allocator<score_t>>;
+    using column_type = std::vector<score_t, aligned_allocator<score_t, alignof(score_t)>>;
 
     column_type optimal_column{};
     column_type horizontal_column{};
