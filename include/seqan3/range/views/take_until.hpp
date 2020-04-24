@@ -27,6 +27,7 @@
 #include <seqan3/std/iterator>
 #include <seqan3/std/type_traits>
 #include <seqan3/std/ranges>
+#include <seqan3/std/span>
 
 namespace seqan3::detail
 {
@@ -146,7 +147,7 @@ private:
         }
 
         //!\brief Evaluate functor, possibly throw.
-        bool operator==(sentinel_type const & rhs) const
+        bool operator==(std::ranges::default_sentinel_t const & rhs) const
             noexcept(!or_throw &&
                      noexcept(std::declval<base_base_t &>() == std::declval<sentinel_type &>()) &&
                      noexcept(fun(std::declval<reference>())))
@@ -163,14 +164,14 @@ private:
         }
 
         //!\brief Switch lhs and rhs for comparison.
-        friend bool operator==(sentinel_type const & lhs, iterator_type const & rhs)
+        friend bool operator==(std::ranges::default_sentinel_t const & lhs, iterator_type const & rhs)
             noexcept(noexcept(rhs == lhs))
         {
             return rhs == lhs;
         }
 
         //!\brief Switch lhs and rhs for comparison.
-        bool operator!=(sentinel_type const & rhs) const
+        bool operator!=(std::ranges::default_sentinel_t const & rhs) const
             noexcept(noexcept(std::declval<iterator_type &>() == rhs))
         {
             return !(*this == rhs);
@@ -187,7 +188,7 @@ private:
         }
 
         //!\brief Switch lhs and rhs for comparison.
-        friend bool operator!=(sentinel_type const & lhs, iterator_type const & rhs)
+        friend bool operator!=(std::ranges::default_sentinel_t const & lhs, iterator_type const & rhs)
             noexcept(noexcept(rhs != lhs))
         {
             return rhs != lhs;
@@ -302,7 +303,7 @@ private:
          * \{
          */
         //!\brief Return the saved at_end state.
-        bool operator==(sentinel_type const & rhs) const
+        bool operator==(std::ranges::default_sentinel_t const & rhs) const
             noexcept(!or_throw &&
                      noexcept(std::declval<base_base_t &>() != std::declval<sentinel_type &>()) &&
                      noexcept(fun(std::declval<reference>())))
@@ -322,14 +323,14 @@ private:
         }
 
         //!\brief Return the saved at_end state.
-        friend bool operator==(sentinel_type const & lhs, iterator_type_consume_input const & rhs)
+        friend bool operator==(std::ranges::default_sentinel_t const & lhs, iterator_type_consume_input const & rhs)
             noexcept(noexcept(rhs == lhs))
         {
             return rhs == lhs;
         }
 
         //!\brief Return the saved at_end state.
-        bool operator!=(sentinel_type const & rhs) const
+        bool operator!=(std::ranges::default_sentinel_t const & rhs) const
             noexcept(noexcept(std::declval<iterator_type_consume_input &>() == rhs))
         {
             return !(*this == rhs);
@@ -452,21 +453,21 @@ public:
      */
     auto end() noexcept
     {
-        return std::ranges::end(urange);
+        return std::ranges::default_sentinel;
     }
 
     //!\copydoc end()
     auto end() const noexcept
         requires const_iterable
     {
-        return std::ranges::cend(urange);
+        return std::ranges::default_sentinel;
     }
 
     //!\copydoc end()
     auto cend() const noexcept
         requires const_iterable
     {
-        return std::ranges::cend(urange);
+        return std::ranges::default_sentinel;
     }
     //!\}
 };

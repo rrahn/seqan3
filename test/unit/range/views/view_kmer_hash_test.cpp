@@ -8,7 +8,7 @@
 #include <forward_list>
 #include <list>
 #include <type_traits>
-
+#include <seqan3/core/debug_stream.hpp>
 #include <seqan3/alphabet/nucleotide/dna4.hpp>
 #include <seqan3/alphabet/nucleotide/dna5.hpp>
 #include <seqan3/range/container/bitcompressed_vector.hpp>
@@ -205,4 +205,15 @@ TEST_F(kmer_hash_test, issue1643)
 
     auto k_mer_size_25_view = text_23_elements | seqan3::views::kmer_hash(seqan3::ungapped{25u});
     EXPECT_TRUE(k_mer_size_25_view.empty());
+}
+
+// https://github.com/seqan/seqan3/issues/1754
+TEST_F(kmer_hash_test, issue1754)
+{
+    auto stop_at_t = seqan3::views::take_until([] (seqan3::dna4 const x) { return x == 'T'_dna4; });
+
+    /*EXPECT_EQ(result_t{228}, text2 | stop_at_t | std::views::reverse | seqan3::views::kmer_hash(seqan3::ungapped{4})
+                                   | seqan3::views::to<result_t>);
+    EXPECT_EQ(result_t{228}, text2 | stop_at_t | std::views::reverse | gapped_view
+                                   | seqan3::views::to<result_t>);*/
 }
