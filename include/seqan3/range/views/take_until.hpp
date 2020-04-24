@@ -164,6 +164,12 @@ private:
         }
 
         //!\brief Switch lhs and rhs for comparison.
+        friend bool operator==(iterator_type const & lhs, std::ranges::default_sentinel_t const & rhs)
+        {
+            return rhs == lhs;
+        }
+
+        //!\brief Switch lhs and rhs for comparison.
         friend bool operator==(std::ranges::default_sentinel_t const & lhs, iterator_type const & rhs)
             noexcept(noexcept(rhs == lhs))
         {
@@ -185,6 +191,13 @@ private:
         //!\endcond
         {
             return !(*this == rhs);
+        }
+
+        //!\brief Return the saved at_end state.
+        friend bool operator!=(iterator_type const & lhs, std::ranges::default_sentinel_t const & rhs)
+            noexcept(noexcept(rhs != lhs))
+        {
+            return rhs != lhs;
         }
 
         //!\brief Switch lhs and rhs for comparison.
@@ -322,6 +335,12 @@ private:
             return fun(**this);
         }
 
+        //!\brief Switch lhs and rhs for comparison.
+        friend bool operator==(iterator_type_consume_input const &lhs, std::ranges::default_sentinel_t const & rhs)
+        {
+            return rhs == lhs;
+        }
+
         //!\brief Return the saved at_end state.
         friend bool operator==(std::ranges::default_sentinel_t const & lhs, iterator_type_consume_input const & rhs)
             noexcept(noexcept(rhs == lhs))
@@ -334,6 +353,13 @@ private:
             noexcept(noexcept(std::declval<iterator_type_consume_input &>() == rhs))
         {
             return !(*this == rhs);
+        }
+
+        //!\brief Return the saved at_end state.
+        friend bool operator!=(iterator_type_consume_input const & lhs, std::ranges::default_sentinel_t const & rhs)
+            noexcept(noexcept(rhs != lhs))
+        {
+            return rhs != lhs;
         }
 
         //!\brief Return the saved at_end state.
