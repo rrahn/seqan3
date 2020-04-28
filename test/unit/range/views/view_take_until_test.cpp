@@ -109,7 +109,7 @@ TEST(view_take_until, unix_eol)
 {
     do_test(seqan3::views::take_until, [] (char c) { return c == '\n'; }, "foo\nbar");
 }
-
+/*
 TEST(view_take_until, functor_fail)
 {
     std::string vec{"foo"};
@@ -118,7 +118,7 @@ TEST(view_take_until, functor_fail)
                         | seqan3::views::take_until([] (char c) { return c == '\n'; })
                         | seqan3::views::to<std::string> ));
     EXPECT_EQ("foo", v);
-}
+}*/
 
 TEST(view_take_until, concepts)
 {
@@ -133,7 +133,7 @@ TEST(view_take_until, concepts)
 // ============================================================================
 //  view_take_until_or_throw
 // ============================================================================
-
+/*
 TEST(view_take_until_or_throw, unix_eol)
 {
     do_test(seqan3::views::take_until_or_throw, [] (char c) { return c == '\n'; }, "foo\nbar");
@@ -146,7 +146,7 @@ TEST(view_take_until_or_throw, functor_fail)
                                | seqan3::views::take_until_or_throw([] (char c) { return c == '\n'; })
                                | seqan3::views::to<std::string>,
                  seqan3::unexpected_end_of_input);
-}
+}*/
 
 TEST(view_take_until_or_throw, concepts)
 {
