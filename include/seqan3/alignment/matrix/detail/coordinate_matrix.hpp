@@ -13,39 +13,17 @@
 #pragma once
 
 #include <seqan3/std/ranges>
+#include <seqan3/std/type_traits>
 
 #include <seqan3/alignment/matrix/detail/matrix_coordinate.hpp>
+#include <seqan3/alignment/matrix/detail/coordinate_matrix_simd.hpp>
+#include <seqan3/core/simd/concept.hpp>
+#include <seqan3/core/simd/simd_traits.hpp>
+#include <seqan3/core/type_traits/lazy.hpp>
+#include <seqan3/core/type_traits/template_inspection.hpp>
 
 namespace seqan3::detail
 {
-
-/*!\brief A function object that converts a column index and a row index to a seqan3::detail::matrix_coordinate.
- * \ingroup alignment_matrix
- *
- * \details
- *
- * This helper function object is used for the seqan3::detail::coordinate_matrix_iterator to convert the a column index
- * and row index into a seqan3::detail::matrix_coordinate. The seqan3::detail::coordinate_matrix_iterator iterates
- * over the columns of the underlying coordinate matrix and returns a transformed iota range over the row indices of
- * this column. The column index is stored as member inside of this function object since every column index is
- * associated with many row indices.
- */
-struct convert_to_matrix_coordinate
-{
-    //!\brief The index of the represented column.
-    size_t column_index{0};
-
-    /*!\brief The conversion operator
-     *
-     * \param[in] row_index The index of the represented row.
-     *
-     * \returns seqan3::detail::matrix_coordinate for the current column and row index.
-     */
-    auto operator()(size_t const row_index) noexcept
-    {
-        return matrix_coordinate{row_index_type{row_index}, column_index_type{column_index}};
-    }
-};
 
 /*!\brief The iterator for the seqan3::detail::coordinate_matrix.
  * \ingroup alignment_matrix
@@ -60,11 +38,10 @@ struct convert_to_matrix_coordinate
 class coordinate_matrix_iterator
 {
 private:
-
     //!\brief The currently represented column index.
-    size_t m_column_index{0};
+    size_t column_index{};
     //!\brief The row index marking the end of the rows (size of one column).
-    size_t m_end_row_index{0};
+    size_t end_row_index{};
 
 public:
     /*!\name Associated types
@@ -72,7 +49,7 @@ public:
      */
     //!\brief The value type.
     using value_type = decltype(std::views::iota(static_cast<size_t>(0), static_cast<size_t>(1))
-                              | std::views::transform(convert_to_matrix_coordinate{m_column_index}));
+                              | std::views::transform(convert_to_matrix_coordinate<size_t>{column_index}));
     //!\brief The reference type.
     using reference = value_type;
     //!\brief The pointer type.
@@ -96,25 +73,24 @@ public:
     /*!\brief Constructs and initialises the iterator with the current column index and the row index marking the end
      *        of the rows (size of one column).
      *
-     * \param[in] column_index \copybrief seqan3::detail::coordinate_matrix_iterator::m_column_index
-     * \param[in] end_row_index \copybrief seqan3::detail::coordinate_matrix_iterator::m_end_row_index
+     * \param[in] column_index \copybrief seqan3::detail::coordinate_matrix_iterator::column_index
+     * \param[in] end_row_index \copybrief seqan3::detail::coordinate_matrix_iterator::end_row_index
      */
-    explicit coordinate_matrix_iterator(column_index_type<size_t> column_index,
-                                        row_index_type<size_t> end_row_index) noexcept :
-        m_column_index{column_index.get()},
-        m_end_row_index{end_row_index.get()}
+    explicit coordinate_matrix_iterator(size_t column_index, size_t end_row_index) noexcept :
+        column_index{column_index},
+        end_row_index{end_row_index}
     {}
     //!\}
 
-    /*!\name Access operators
+    /*!\name Element access
      * \{
      */
 
     //!\brief Access the pointed-to matrix coordinate column.
     auto operator*() const
     {
-        return std::views::iota(static_cast<size_t>(0), m_end_row_index)
-             | std::views::transform(convert_to_matrix_coordinate{m_column_index});
+        return std::views::iota(static_cast<size_t>(0), end_row_index)
+             | std::views::transform(convert_to_matrix_coordinate<size_t>{column_index});
     }
     //!\}
 
@@ -125,7 +101,7 @@ public:
     //!\brief Increments the iterator to the next column.
     coordinate_matrix_iterator & operator++()
     {
-        ++m_column_index;
+        ++column_index;
         return *this;
     }
 
@@ -145,7 +121,7 @@ public:
     //!\brief Tests whether `lhs == rhs`.
     friend bool operator==(coordinate_matrix_iterator const & lhs, coordinate_matrix_iterator const & rhs)
     {
-        return lhs.m_column_index == rhs.m_column_index;
+        return lhs.column_index == rhs.column_index;
     }
 
     //!\brief Tests whether `lhs != rhs`.
@@ -160,6 +136,8 @@ public:
  * \ingroup alignment_matrix
  * \implements std::ranges::forward_range
  *
+ * \tparam index_t The underlying matrix index type; must mode std::integral or seqan3::simd::simd_concept.
+ *
  * \details
  *
  * In the alignment algorithm an additional matrix is needed to represent the coordinates of the processed cells.
@@ -167,16 +145,41 @@ public:
  * coordinates. It uses the seqan3::detail::matrix_coordinate_iterator to iterate
  * over the columns of this virtual matrix. When the seqan3::detail::matrix_coordinate_iterator is dereferenced it
  * returns an on-the-fly constructed range ([prvalue](https://en.cppreference.com/w/cpp/language/value_category))
- * representing the current coordinate column. The value type of this range is seqan3::detail::matrix_coordinate.
+ * representing the current coordinate column. The reference type of this range is seqan3::detail::matrix_coordinate.
+ *
+ * ### Simd mode
+ *
+ * If the `index_t` is a simd vector the matrix implements a vectorised coordinate matrix instead. In this case the
+ * matrix uses a seqan3::detail::matrix_coordinate_simd_iterator to iterate over the vectorised matrix. When the
+ * seqan3::detail::matrix_coordinate_iterator is dereferenced it returns an on-the-fly constructed range
+ * ([prvalue](https://en.cppreference.com/w/cpp/language/value_category)) representing the current simd coordinate
+ * column. The reference type of this range is seqan3::detail::simd_matrix_coordinate.
  */
+template <typename index_t>
+//!\cond
+    requires std::integral<index_t> || simd_concept<index_t>
+//!\endcond
 class coordinate_matrix
 {
 private:
+    //!\brief Helper type alias to conditionally extract the scalar type from the seqan3::simd::simd_traits type.
+    template <typename lazy_simd_traits_t>
+    using lazy_scalar_type = typename instantiate_t<lazy_simd_traits_t>::scalar_type;
+
+    //!\brief The internal size type which depends on `index_t` being a simd vector or a scalar type.
+    using size_type = lazy_conditional_t<simd_concept<index_t>,
+                                         lazy<lazy_scalar_type, lazy<simd_traits, index_t>>,
+                                         size_t>;
+
+    //!\brief The iterator type which depends on `index_t` being a simd vector or a scalar type.
+    using iterator_type = lazy_conditional_t<simd_concept<index_t>,
+                                             lazy<coordinate_matrix_simd_iterator, index_t>,
+                                             coordinate_matrix_iterator>;
 
     //!\brief The column index marking the end of columns (size of one row).
-    column_index_type<size_t> m_end_column_index{};
+    size_type end_column_index{};
     //!\brief The row index marking the end of rows (size of one column).
-    row_index_type<size_t> m_end_row_index{};
+    size_type end_row_index{};
 
 public:
     /*!\name Constructors, destructor and assignment
@@ -189,16 +192,18 @@ public:
     coordinate_matrix & operator=(coordinate_matrix &&) = default; //!< Defaulted.
     ~coordinate_matrix() = default; //!< Defaulted.
 
-    /*!\brief Resets the coordinate matrix with the given end column index and end row index representing the dimensions
-     *        of the reset matrix.
+    /*!\brief Resets the coordinate matrix with the given end column index and end row index representing the new
+     *        dimensions of the matrix.
      *
-     * \param[in] end_column_index \copybrief seqan3::detail::coordinate_matrix::m_end_column_index
-     * \param[in] end_row_index \copybrief seqan3::detail::coordinate_matrix::m_end_row_index
+     * \param[in] end_column_index \copybrief seqan3::detail::coordinate_matrix::end_column_index
+     * \param[in] end_row_index \copybrief seqan3::detail::coordinate_matrix::end_row_index
      */
-    void reset_matrix(column_index_type<size_t> const end_column_index, row_index_type<size_t> const end_row_index)
+    template <std::integral column_size_t, std::integral row_size_t>
+    void reset_matrix(column_index_type<column_size_t> const end_column_index,
+                      row_index_type<row_size_t> const end_row_index)
     {
-        m_end_column_index = end_column_index;
-        m_end_row_index = end_row_index;
+        this->end_column_index = static_cast<size_type>(end_column_index.get());
+        this->end_row_index = static_cast<size_type>(end_row_index.get());
     }
     //!\}
 
@@ -206,15 +211,15 @@ public:
      * \{
      */
     //!\brief Returns the iterator pointing to the first column of the matrix.
-    coordinate_matrix_iterator begin() const noexcept
+    iterator_type begin() const noexcept
     {
-        return coordinate_matrix_iterator{column_index_type<size_t>{0u}, m_end_row_index};
+        return iterator_type{static_cast<size_type>(0), end_row_index};
     }
 
     //!\brief Returns the iterator pointing to the end column of the matrix.
-    coordinate_matrix_iterator end() const noexcept
+    iterator_type end() const noexcept
     {
-        return coordinate_matrix_iterator{m_end_column_index, m_end_row_index};
+        return iterator_type{end_column_index, end_row_index};
     }
     //!\}
 };

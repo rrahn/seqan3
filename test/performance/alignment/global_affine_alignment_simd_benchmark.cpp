@@ -38,7 +38,7 @@ inline constexpr size_t set_size        = 1024;
 
 // Range to test for sequence length variance
 inline constexpr size_t deviation_begin = 0;
-inline constexpr size_t deviation_end = 64;
+inline constexpr size_t deviation_end = 0;
 inline constexpr size_t deviation_step = 8;
 
 //We don't know if the system supports hyper-threading so we use only half the threads so that the
@@ -88,21 +88,21 @@ BENCHMARK_CAPTURE(seqan3_affine_dna4_accelerated,
                         ->UseRealTime()
                         ->DenseRange(deviation_begin, deviation_end, deviation_step);
 
-BENCHMARK_CAPTURE(seqan3_affine_dna4_accelerated,
-                  simd_parallel_with_score,
-                  seqan3::align_cfg::result{seqan3::with_score, seqan3::using_score_type<int16_t>},
-                  seqan3::align_cfg::vectorise,
-                  seqan3::align_cfg::parallel{get_number_of_threads()})
-                        ->UseRealTime()
-                        ->DenseRange(deviation_begin, deviation_end, deviation_step);
+// BENCHMARK_CAPTURE(seqan3_affine_dna4_accelerated,
+//                   simd_parallel_with_score,
+//                   seqan3::align_cfg::result{seqan3::with_score, seqan3::using_score_type<int16_t>},
+//                   seqan3::align_cfg::vectorise,
+//                   seqan3::align_cfg::parallel{get_number_of_threads()})
+//                         ->UseRealTime()
+//                         ->DenseRange(deviation_begin, deviation_end, deviation_step);
 
-BENCHMARK_CAPTURE(seqan3_affine_dna4_accelerated,
-                  simd_parallel_with_end_position,
-                  seqan3::align_cfg::result{seqan3::with_back_coordinate, seqan3::using_score_type<int16_t>},
-                  seqan3::align_cfg::vectorise,
-                  seqan3::align_cfg::parallel{get_number_of_threads()})
-                        ->UseRealTime()
-                        ->DenseRange(deviation_begin, deviation_end, deviation_step);
+// BENCHMARK_CAPTURE(seqan3_affine_dna4_accelerated,
+//                   simd_parallel_with_end_position,
+//                   seqan3::align_cfg::result{seqan3::with_back_coordinate, seqan3::using_score_type<int16_t>},
+//                   seqan3::align_cfg::vectorise,
+//                   seqan3::align_cfg::parallel{get_number_of_threads()})
+//                         ->UseRealTime()
+//                         ->DenseRange(deviation_begin, deviation_end, deviation_step);
 
 #ifdef SEQAN3_HAS_SEQAN2
 
@@ -122,7 +122,7 @@ void seqan2_affine_dna4_accelerated(benchmark::State & state, args_t && ...args)
     for (auto _ : state)
     {
         // In SeqAn2 the gap open contains already the gap extension costs, that's why we use -11 here.
-        auto res = seqan::globalAlignmentScore(exec, vec1, vec2, seqan::Score<int>{4, -5, -1, -11});
+        auto res = seqan::globalAlignmentScore(exec, vec1, vec2, seqan::Score<int16_t>{4, -5, -1, -11});
         total = std::accumulate(seqan::begin(res), seqan::end(res), total);
     }
 
@@ -139,12 +139,12 @@ BENCHMARK_CAPTURE(seqan2_affine_dna4_accelerated,
                         ->UseRealTime()
                         ->DenseRange(deviation_begin, deviation_end, deviation_step);
 
-BENCHMARK_CAPTURE(seqan2_affine_dna4_accelerated,
-                  simd_parallel_with_score,
-                  seqan::ExecutionPolicy<seqan::Parallel, seqan::Vectorial>{},
-                  get_number_of_threads())
-                        ->UseRealTime()
-                        ->DenseRange(deviation_begin, deviation_end, deviation_step);
+// BENCHMARK_CAPTURE(seqan2_affine_dna4_accelerated,
+//                   simd_parallel_with_score,
+//                   seqan::ExecutionPolicy<seqan::Parallel, seqan::Vectorial>{},
+//                   get_number_of_threads())
+//                         ->UseRealTime()
+//                         ->DenseRange(deviation_begin, deviation_end, deviation_step);
 #endif // SEQAN3_HAS_SEQAN2
 
 // ============================================================================
