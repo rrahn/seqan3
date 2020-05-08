@@ -17,6 +17,7 @@
 
 #include <seqan3/alignment/configuration/align_config_gap.hpp>
 #include <seqan3/alignment/configuration/align_config_scoring.hpp>
+#include <seqan3/alignment/matrix/detail/coordinate_matrix.hpp>
 #include <seqan3/alignment/matrix/detail/score_matrix_single_column.hpp>
 #include <seqan3/alignment/pairwise/detail/type_traits.hpp>
 #include <seqan3/alignment/scoring/gap_scheme.hpp>
@@ -167,43 +168,50 @@ protected:
 
         this->reset_optimum(); // Reset the tracker for the new alignment computation.
 
-        thread_local score_matrix_single_column<int32_t> local_matrix{};
-        local_matrix.reset_matrix(std::forward<sequence1_t>(sequence1), std::forward<sequence2_t>(sequence2));
-        auto matrix_iter = local_matrix.begin();
+        thread_local score_matrix_single_column<int32_t> local_score_matrix{};
+        thread_local coordinate_matrix local_coordinate_matrix{};
 
-        initialise_column(*matrix_iter, sequence2);
+        local_score_matrix.reset_matrix(sequence1, sequence2);
+        local_coordinate_matrix.reset_matrix(
+                column_index_type{static_cast<size_t>(std::ranges::distance(sequence1) + 1)},
+                row_index_type{static_cast<size_t>(std::ranges::distance(sequence2) + 1)});
+
+        auto combined_matrix = views::zip(local_score_matrix, local_coordinate_matrix);
+
+        auto matrix_iter = combined_matrix.begin();
+
+        initialise_column(matrix_iter, sequence2);
 
         // ---------------------------------------------------------------------
         // Iteration phase: compute column-wise the alignment matrix.
         // ---------------------------------------------------------------------
 
         for (auto sequence1_value : sequence1)
-        {
-            ++matrix_iter;
-            compute_column(*matrix_iter, sequence1_value, sequence2);
-        }
+            compute_column(++matrix_iter, sequence1_value, sequence2);
 
         // ---------------------------------------------------------------------
         // Final phase: track score of last column
         // ---------------------------------------------------------------------
 
-        auto alignment_column = *matrix_iter;
+        auto && [alignment_column, coordinate_column] = *matrix_iter;
         auto column_iterator = alignment_column.begin();
-        this->track_last_column_cell(*column_iterator);
+        auto coordinate_iterator = coordinate_column.begin();
+        this->track_last_column_cell(*column_iterator, *coordinate_iterator);
 
         for ([[maybe_unused]] auto && unused : sequence2)
-            this->track_last_column_cell(*++column_iterator);
+            this->track_last_column_cell(*++column_iterator, *++coordinate_iterator);
 
-        this->track_final_cell(*column_iterator);
+        this->track_final_cell(*column_iterator, *coordinate_iterator);
 
         return this->tracked_optimum();
     }
 
     /*!\brief Initialise the first column of the alignment matrix.
-     * \tparam alignment_matrix_column_t The type of the alignment matrix; must model std::ranges::input_range.
+     * \tparam alignment_matrix_iterator_t The type of the alignment matrix iterator; must model
+     *                                     std::input_iterator.
      * \tparam sequence2_t The type of the second sequence; must model std::ranges::input_range.
      *
-     * \param[in] first_column The first column of the alignment matrix to initialise.
+     * \param[in] alignment_matrix_iter The iterator pointing to the current alignment matrix column to compute.
      * \param[in] sequence2 The second sequence used to determine the size of the column.
      *
      * \details
@@ -215,15 +223,17 @@ protected:
      * phase all remaining cells are computed. In the final phase the last cell is possibly evaluated for a new
      * alignment optimum.
      */
-    template <std::ranges::input_range alignment_matrix_column_t, std::ranges::input_range sequence2_t>
-    void initialise_column(alignment_matrix_column_t && first_column, sequence2_t && sequence2)
+    template <std::input_iterator alignment_matrix_iterator_t, std::ranges::input_range sequence2_t>
+    void initialise_column(alignment_matrix_iterator_t alignment_matrix_iter, sequence2_t && sequence2)
     {
         // ---------------------------------------------------------------------
         // Initial phase: prepare column and initialise first cell
         // ---------------------------------------------------------------------
 
+        auto && [first_column, coordinate_column] = * alignment_matrix_iter;
         auto first_column_iter = first_column.begin();
-        *first_column_iter = this->track_cell(this->initialise_origin_cell());
+        auto coordinate_column_iter = coordinate_column.begin();
+        *first_column_iter = this->track_cell(this->initialise_origin_cell(), *coordinate_column_iter);
 
         // ---------------------------------------------------------------------
         // Iteration phase: iterate over column and compute each cell
@@ -232,22 +242,24 @@ protected:
         for ([[maybe_unused]] auto && unused : sequence2)
         {
             ++first_column_iter;
-            *first_column_iter = this->track_cell(this->initialise_first_column_cell(*first_column_iter));
+            *first_column_iter = this->track_cell(this->initialise_first_column_cell(*first_column_iter),
+                                                  *++coordinate_column_iter);
         }
 
         // ---------------------------------------------------------------------
         // Final phase: track last cell of initial column
         // ---------------------------------------------------------------------
 
-        this->track_last_row_cell(*first_column_iter);
+        this->track_last_row_cell(*first_column_iter, *coordinate_column_iter);
     }
 
     /*!\brief Initialise any column of the alignment matrix except the first one.
-     * \tparam alignment_matrix_column_t The type of the alignment matrix; must model std::ranges::input_range.
+     * \tparam alignment_matrix_iterator_t The type of the alignment matrix iterator; must model
+     *                                     std::input_iterator.
      * \tparam sequence1_value_t The value type of sequence1; must model seqan3::semialphabet.
      * \tparam sequence2_t The type of the second sequence; must model std::ranges::input_range.
      *
-     * \param[in] alignment_column The column of the alignment matrix to compute.
+     * \param[in] alignment_matrix_iter The iterator pointing to the current alignment matrix column to compute.
      * \param[in] sequence1_value The current symbol of sequence1.
      * \param[in] sequence2 The second sequence to align against `sequence1_value`.
      *
@@ -258,10 +270,10 @@ protected:
      * phase the first cell of the column is computed and in the iteration phase all remaining cells are computed.
      * In the final phase the last cell is possibly evaluated for a new alignment optimum.
      */
-    template <std::ranges::input_range alignment_matrix_column_t,
+    template <std::input_iterator alignment_matrix_iterator_t,
               semialphabet sequence1_value_t,
               std::ranges::input_range sequence2_t>
-    void compute_column(alignment_matrix_column_t && alignment_column,
+    void compute_column(alignment_matrix_iterator_t alignment_matrix_iter,
                         sequence1_value_t const & sequence1_value,
                         sequence2_t && sequence2)
     {
@@ -271,11 +283,14 @@ protected:
         // Initial phase: prepare column and initialise first cell
         // ---------------------------------------------------------------------
 
+        auto && [alignment_column, coordinate_column] = *alignment_matrix_iter;
+
         auto alignment_column_iter = alignment_column.begin();
+        auto coordinate_column_iter = coordinate_column.begin();
 
         auto cell = *alignment_column_iter;
         score_type diagonal = cell.optimal_score();
-        *alignment_column_iter = this->track_cell(this->initialise_first_row_cell(cell));
+        *alignment_column_iter = this->track_cell(this->initialise_first_row_cell(cell), *coordinate_column_iter);
 
         // ---------------------------------------------------------------------
         // Iteration phase: iterate over column and compute each cell
@@ -283,11 +298,11 @@ protected:
 
         for (auto && sequence2_value : sequence2)
         {
-            ++alignment_column_iter;
-            auto cell = *alignment_column_iter;
+            auto cell = *++alignment_column_iter;
             score_type next_diagonal = cell.optimal_score();
             *alignment_column_iter = this->track_cell(
-                this->compute_inner_cell(diagonal, cell, m_scoring_scheme.score(sequence1_value, sequence2_value)));
+                this->compute_inner_cell(diagonal, cell, m_scoring_scheme.score(sequence1_value, sequence2_value)),
+                *++coordinate_column_iter);
             diagonal = next_diagonal;
         }
 
@@ -295,7 +310,7 @@ protected:
         // Final phase: track last cell
         // ---------------------------------------------------------------------
 
-        this->track_last_row_cell(*alignment_column_iter);
+        this->track_last_row_cell(*alignment_column_iter, *coordinate_column_iter);
     }
 };
 

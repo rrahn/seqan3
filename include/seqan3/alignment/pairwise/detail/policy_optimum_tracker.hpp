@@ -14,6 +14,7 @@
 
 #include <limits>
 
+#include <seqan3/alignment/matrix/detail/matrix_coordinate.hpp>
 #include <seqan3/alignment/pairwise/detail/type_traits.hpp>
 #include <seqan3/core/algorithm/configuration.hpp>
 #include <seqan3/core/type_traits/template_inspection.hpp>
@@ -53,6 +54,8 @@ private:
 
     //!\brief The tracked score of the global optimum.
     score_type m_optimal_score{};
+    //!\brief The matrix coordinate of the tracked optimum.
+    matrix_coordinate m_optimal_coordinate{};
 
 protected:
     /*!\name Constructors, destructor and assignment
@@ -83,8 +86,10 @@ protected:
      * \tparam cell_t The cell type of the alignment matrix; must have a member function `optimal_score()`.
      *
      * \param[in] cell The current cell to be tracked.
+     * \param[in] coordinate The matrix coordinate of the current cell.
      *
      * \returns The forwarded cell.
+     *
      *
      * \details
      *
@@ -92,7 +97,7 @@ protected:
      * algorithm requires it, for example when a local alignment shall be computed.
      */
     template <typename cell_t>
-    decltype(auto) track_cell(cell_t && cell) noexcept
+    decltype(auto) track_cell(cell_t && cell, matrix_coordinate SEQAN3_DOXYGEN_ONLY(coordinate)) noexcept
     {
         return std::forward<cell_t>(cell);
     }
@@ -102,6 +107,7 @@ protected:
      * \tparam cell_t The cell type of the alignment matrix; must have a member function `optimal_score()`.
      *
      * \param[in] cell The current cell to be tracked.
+     * \param[in] coordinate The matrix coordinate of the current cell.
      *
      * \returns The forwarded cell.
      *
@@ -111,7 +117,7 @@ protected:
      * algorithm requires it, for example when a semi-global alignment shall be computed.
      */
     template <typename cell_t>
-    decltype(auto) track_last_row_cell(cell_t && cell) noexcept
+    decltype(auto) track_last_row_cell(cell_t && cell, matrix_coordinate SEQAN3_DOXYGEN_ONLY(coordinate)) noexcept
     {
         return std::forward<cell_t>(cell);
     }
@@ -121,6 +127,7 @@ protected:
      * \tparam cell_t The cell type of the alignment matrix; must have a member function `optimal_score()`.
      *
      * \param[in] cell The current cell to be tracked.
+     * \param[in] coordinate The matrix coordinate of the current cell.
      *
      * \returns The forwarded cell.
      *
@@ -130,7 +137,7 @@ protected:
      * algorithm requires it, for example when a semi-global alignment shall be computed.
      */
     template <typename cell_t>
-    decltype(auto) track_last_column_cell(cell_t && cell) noexcept
+    decltype(auto) track_last_column_cell(cell_t && cell, matrix_coordinate SEQAN3_DOXYGEN_ONLY(coordinate)) noexcept
     {
         return std::forward<cell_t>(cell);
     }
@@ -140,6 +147,7 @@ protected:
      * \tparam cell_t The cell type of the alignment matrix; must have a member function `optimal_score()`.
      *
      * \param[in] cell The current cell to be tracked.
+     * \param[in] coordinate The matrix coordinate of the current cell.
      *
      * \returns The forwarded cell.
      *
@@ -149,9 +157,11 @@ protected:
      * algorithm requires it, for example when a global alignment shall be computed.
      */
     template <typename cell_t>
-    decltype(auto) track_final_cell(cell_t && cell) noexcept
+    decltype(auto) track_final_cell(cell_t && cell, matrix_coordinate coordinate) noexcept
     {
-        m_optimal_score = (cell.optimal_score() >= m_optimal_score) ? cell.optimal_score() : m_optimal_score;
+        m_optimal_score = (cell.optimal_score() >= m_optimal_score) ?
+                          (m_optimal_coordinate = std::move(coordinate), cell.optimal_score()) :
+                           m_optimal_score;
         return std::forward<cell_t>(cell);
     }
 
@@ -168,6 +178,8 @@ protected:
     void reset_optimum() noexcept
     {
         m_optimal_score = std::numeric_limits<score_type>::lowest();
+        m_optimal_coordinate.row = 0;
+        m_optimal_coordinate.col = 0;
     }
 };
 } // namespace seqan3::detail
