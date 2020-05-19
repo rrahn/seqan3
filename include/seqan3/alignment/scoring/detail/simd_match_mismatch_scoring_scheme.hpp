@@ -151,9 +151,14 @@ public:
     //!\}
 
     //!\brief Returns the match score used for padded symbols.
-    constexpr auto padding_match_score() noexcept
+    constexpr auto max_match_score() noexcept
     {
         return match_score[0];
+    }
+
+    constexpr auto min_mismatch_score() noexcept
+    {
+        return mismatch_score[0];
     }
 
 private:

@@ -43,7 +43,7 @@ class policy_affine_gap_recursion
 {
 protected:
     //!\brief The configuration traits type.
-    using traits_type = alignment_configuration_traits<alignment_configuration_t>;
+    using traits_type = configuration_traits_t<alignment_configuration_t>;
     //!\brief The configured score type.
     using score_type = typename traits_type::score_type;
     //!\brief The affine cell type returned by the functions.

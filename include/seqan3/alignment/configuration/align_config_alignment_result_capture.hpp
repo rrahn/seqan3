@@ -60,7 +60,7 @@ namespace seqan3::align_cfg
  * alignment algorithm with the seqan3::detail::alignment_configurator. The actual result type is wrapped in
  * std::type_identity to preserve the trivial type properties of the configuration element. Thus, on access the
  * actual type needs to be unwrapped using the member typedef `type` before it can be used.
- * The result type can be accessed via the seqan3::detail::alignment_configuration_traits over the corresponding
+ * The result type can be accessed via the seqan3::detail::configuration_traits_t over the corresponding
  * alignment configuration type.
  * If the captured alignment result wasn't added yet to the alignment configuration the corresponding
  * result type member will deduce to seqan3::detail::empty_type.

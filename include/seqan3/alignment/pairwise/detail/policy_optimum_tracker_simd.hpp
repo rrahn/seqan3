@@ -100,6 +100,8 @@ protected:
     //!\brief The original non-simd score type.
     using original_score_type = typename traits_type::original_score_type;
 
+    using matrix_index_type = typename traits_type::matrix_index_type;
+
     static_assert(simd_concept<score_type>, "Must be a simd type!");
 
     // Import base variables into class scope.

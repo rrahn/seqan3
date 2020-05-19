@@ -40,7 +40,7 @@ class edit_distance_algorithm
 {
 private:
     //!\brief The configuration traits for the selected alignment algorithm.
-    using configuration_traits_type = alignment_configuration_traits<config_t>;
+    using configuration_traits_type = configuration_traits_t<config_t>;
     //!\brief The configured alignment result type.
     using alignment_result_type = typename configuration_traits_type::alignment_result_type;
 

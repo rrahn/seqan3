@@ -19,14 +19,14 @@ namespace seqan3::test::alignment::collection::simd::global::affine::unbanded
 
 static auto dna4_all_same = []()
 {
-    auto base_fixture = fixture::global::affine::unbanded::dna4_match_4_mismatch_5_gap_1_open_10_part_01;
+    auto base_fixture = fixture::global::affine::unbanded::dna4_match_4_mismatch_5_gap_1_open_10_part_03;
     using fixture_t = decltype(base_fixture);
 
     std::vector<fixture_t> data{};
     for (size_t i = 0; i < 100; ++i)
         data.push_back(base_fixture);
 
-    return alignment_fixture_collection{base_fixture.config | seqan3::align_cfg::vectorise, data};
+    return alignment_fixture_collection{base_fixture.config | seqan3::align_cfg::vectorised_dynamic, data};
 }();
 
 static auto dna4_different_length = []()
@@ -47,7 +47,7 @@ static auto dna4_different_length = []()
         data.push_back(base_fixture_04);
     }
 
-    return alignment_fixture_collection{base_fixture_01.config | seqan3::align_cfg::vectorise, data};
+    return alignment_fixture_collection{base_fixture_01.config | seqan3::align_cfg::vectorised_dynamic, data};
 }();
 
 static auto dna4_with_empty_sequences = []()
@@ -72,15 +72,15 @@ static auto dna4_with_empty_sequences = []()
         data.push_back(base_fixture_06);
     }
 
-    return alignment_fixture_collection{base_fixture_01.config | seqan3::align_cfg::vectorise, data};
+    return alignment_fixture_collection{base_fixture_01.config | seqan3::align_cfg::vectorised_dynamic, data};
 }();
 
 } // namespace seqan3::test::alignment::collection::simd::global::affine::unbanded
 
 using pairwise_collection_simd_global_affine_unbanded_testing_types = ::testing::Types<
-        pairwise_alignment_fixture<&seqan3::test::alignment::collection::simd::global::affine::unbanded::dna4_all_same>,
-        pairwise_alignment_fixture<&seqan3::test::alignment::collection::simd::global::affine::unbanded::dna4_different_length>,
-        pairwise_alignment_fixture<&seqan3::test::alignment::collection::simd::global::affine::unbanded::dna4_with_empty_sequences>
+        pairwise_alignment_fixture<&seqan3::test::alignment::collection::simd::global::affine::unbanded::dna4_all_same>
+        // pairwise_alignment_fixture<&seqan3::test::alignment::collection::simd::global::affine::unbanded::dna4_different_length>,
+        // pairwise_alignment_fixture<&seqan3::test::alignment::collection::simd::global::affine::unbanded::dna4_with_empty_sequences>
     >;
 
 INSTANTIATE_TYPED_TEST_SUITE_P(pairwise_collection_simd_global_affine_unbanded,

@@ -20,10 +20,17 @@
 namespace seqan3::detail
 {
 
+struct vectorisation_static_tag{};
+
+struct vectorisation_dynamic_tag{};
+
+
 /*!\brief A tag to select the vectorised alignment algorithm.
  * \ingroup alignment_configuration
  */
-struct vectorise_tag : public pipeable_config_element<vectorise_tag, empty_type>
+template <typename strategy_t>
+    requires pack_traits::contains<strategy_t, vectorisation_static_tag, vectorisation_dynamic_tag>
+struct vectorised_tag : public pipeable_config_element<vectorised_tag<strategy_t>, strategy_t>
 {
     //!\brief Internal id to check for consistent configuration settings.
     static constexpr detail::align_config_id id{detail::align_config_id::vectorise};
@@ -52,6 +59,8 @@ namespace seqan3::align_cfg
  *
  * \include test/snippet/alignment/configuration/align_cfg_vectorise_example.cpp
  */
-inline constexpr detail::vectorise_tag vectorise{};
+inline constexpr detail::vectorised_tag<detail::vectorisation_static_tag> vectorise{};
+
+inline constexpr detail::vectorised_tag<detail::vectorisation_dynamic_tag> vectorised_dynamic{};
 
 } // namespace seqan3::align_cfg

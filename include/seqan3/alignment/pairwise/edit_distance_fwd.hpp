@@ -65,7 +65,7 @@ struct default_edit_distance_trait_type
     //!\brief The type of the alignment config.
     using align_config_type = std::remove_reference_t<align_config_t>;
     //!\brief The alignment algorithm traits over the alignment configuration type.
-    using alignment_traits_type = alignment_configuration_traits<align_config_type>;
+    using alignment_traits_type = configuration_traits_t<align_config_type>;
     //!\brief The type of one machine word.
     using word_type = word_t;
     static_assert(std::is_unsigned_v<word_type>, "the word type of edit_distance_unbanded must be unsigned.");

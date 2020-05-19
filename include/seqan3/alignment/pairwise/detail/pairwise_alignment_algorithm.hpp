@@ -54,9 +54,9 @@ template <typename alignment_configuration_t, typename ...policies_t>
 //!\endcond
 class pairwise_alignment_algorithm : protected policies_t...
 {
-private:
+protected:
     //!\brief The alignment configuration traits type with auxiliary information extracted from the configuration type.
-    using traits_type = alignment_configuration_traits<alignment_configuration_t>;
+    using traits_type = configuration_traits_t<alignment_configuration_t>;
     //!\brief The configured score type.
     using score_type = typename traits_type::score_type;
     //!\brief The configured alignment result type.
@@ -188,7 +188,7 @@ public:
             if constexpr (traits_type::result_type_rank >= 0)
             {
                 res.score = this->optimal_score[index] -
-                            (this->padding_offsets[index] * this->m_scoring_scheme.padding_match_score());
+                            (this->padding_offsets[index] * this->m_scoring_scheme.max_match_score());
             }
 
             callback(alignment_result_type{res});
@@ -268,25 +268,29 @@ protected:
         // Iteration phase: compute column-wise the alignment matrix.
         // ---------------------------------------------------------------------
 
-        for (auto sequence1_value : sequence1)
-            compute_column(*++alignment_matrix_it, *++indexed_matrix_it, sequence1_value, sequence2);
+        size_t seq1_size = sequence1.size() - 1;
+        auto it_seq1 = sequence1.begin();
+        for (size_t idx = 0; idx < seq1_size; ++idx, ++it_seq1)
+            compute_column(*++alignment_matrix_it, *++indexed_matrix_it, *it_seq1, sequence2);
+
+        compute_last_column(*++alignment_matrix_it, *++indexed_matrix_it, *it_seq1, sequence2);
 
         // ---------------------------------------------------------------------
         // Final phase: track score of last column
         // ---------------------------------------------------------------------
 
-        auto && alignment_column = *alignment_matrix_it;
-        auto && cell_index_column = *indexed_matrix_it;
+        // auto && alignment_column = *alignment_matrix_it;
+        // auto && cell_index_column = *indexed_matrix_it;
 
-        auto alignment_column_it = alignment_column.begin();
-        auto cell_index_column_it = cell_index_column.begin();
+        // auto alignment_column_it = alignment_column.begin();
+        // auto cell_index_column_it = cell_index_column.begin();
 
-        this->track_last_column_cell(*alignment_column_it, *cell_index_column_it);
+        // this->track_last_column_cell(*alignment_column_it, *cell_index_column_it);
 
-        for ([[maybe_unused]] auto && unused : sequence2)
-            this->track_last_column_cell(*++alignment_column_it, *++cell_index_column_it);
+        // for ([[maybe_unused]] auto && unused : sequence2)
+        //     this->track_last_column_cell(*++alignment_column_it, *++cell_index_column_it);
 
-        this->track_final_cell(*alignment_column_it, *cell_index_column_it);
+        // this->track_final_cell(*alignment_column_it, *cell_index_column_it);
     }
 
     /*!\brief Initialise the first column of the alignment matrix.
@@ -338,6 +342,16 @@ protected:
         // ---------------------------------------------------------------------
 
         this->track_last_row_cell(*first_column_it, *cell_index_column_it);
+
+        // auto alignment_column_it = alignment_column.begin();
+        // std::cout << "<D:" << (int)(*alignment_column_it).optimal_score()[0] << " H:" << (int)(*alignment_column_it).horizontal_score()[0] << " V:" <<  (int)(*alignment_column_it).vertical_score()[0] << ">";
+
+        // for ([[maybe_unused]] auto const & unused : sequence2)
+        // {
+        //     ++alignment_column_it;
+        //     std::cout << " <D:" << (int)(*alignment_column_it).optimal_score()[0] << " H:" << (int)(*alignment_column_it).horizontal_score()[0] << " V:" <<  (int)(*alignment_column_it).vertical_score()[0] << ">";
+        // }
+        // std::cout << "\n";
     }
 
     /*!\brief Initialise any column of the alignment matrix except the first one.
@@ -402,6 +416,73 @@ protected:
         // ---------------------------------------------------------------------
 
         this->track_last_row_cell(*alignment_column_it, *cell_index_column_it);
+
+        // alignment_column_it = alignment_column.begin();
+        // std::cout << "<D:" << (int)(*alignment_column_it).optimal_score()[0] << " H:" << (int)(*alignment_column_it).horizontal_score()[0] << " V:" <<  (int)(*alignment_column_it).vertical_score()[0] << ">";
+
+        // for ([[maybe_unused]] auto const & unused : sequence2)
+        // {
+        //     ++alignment_column_it;
+        //     std::cout << " <D:" << (int)(*alignment_column_it).optimal_score()[0] << " H:" << (int)(*alignment_column_it).horizontal_score()[0] << " V:" <<  (int)(*alignment_column_it).vertical_score()[0] << ">";
+        // }
+        // std::cout << "\n";
+    }
+
+    template <std::ranges::input_range alignment_column_t,
+              std::ranges::input_range cell_index_column_t,
+              typename sequence1_value_t,
+              std::ranges::input_range sequence2_t>
+    //!\cond
+        requires semialphabet<sequence1_value_t> || simd_concept<sequence1_value_t>
+    //!\endcond
+    void compute_last_column(alignment_column_t && alignment_column,
+                        cell_index_column_t && cell_index_column,
+                        sequence1_value_t const & sequence1_value,
+                        sequence2_t && sequence2)
+    {
+        using score_type = typename traits_type::score_type;
+
+        // ---------------------------------------------------------------------
+        // Initial phase: prepare column and initialise first cell
+        // ---------------------------------------------------------------------
+
+        auto alignment_column_it = alignment_column.begin();
+        auto cell_index_column_it = cell_index_column.begin();
+
+        auto cell = *alignment_column_it;
+        score_type diagonal = cell.optimal_score();
+        *alignment_column_it = this->track_last_column_cell(this->initialise_first_row_cell(cell), *cell_index_column_it);
+
+        // ---------------------------------------------------------------------
+        // Iteration phase: iterate over column and compute each cell
+        // ---------------------------------------------------------------------
+
+        for (auto const & sequence2_value : sequence2)
+        {
+            auto cell = *++alignment_column_it;
+            score_type next_diagonal = cell.optimal_score();
+            *alignment_column_it = this->track_last_column_cell(
+                this->compute_inner_cell(diagonal, cell, this->m_scoring_scheme.score(sequence1_value, sequence2_value)),
+                *++cell_index_column_it);
+            diagonal = next_diagonal;
+        }
+
+        // ---------------------------------------------------------------------
+        // Final phase: track last cell
+        // ---------------------------------------------------------------------
+
+        this->track_last_row_cell(*alignment_column_it, *cell_index_column_it);
+        this->track_final_cell(*alignment_column_it, *cell_index_column_it);
+
+        // alignment_column_it = alignment_column.begin();
+        // std::cout << "<D:" << (int)(*alignment_column_it).optimal_score()[0] << " H:" << (int)(*alignment_column_it).horizontal_score()[0] << " V:" <<  (int)(*alignment_column_it).vertical_score()[0] << ">";
+
+        // for ([[maybe_unused]] auto const & unused : sequence2)
+        // {
+        //     ++alignment_column_it;
+        //     std::cout << " <D:" << (int)(*alignment_column_it).optimal_score()[0] << " H:" << (int)(*alignment_column_it).horizontal_score()[0] << " V:" <<  (int)(*alignment_column_it).vertical_score()[0] << ">";
+        // }
+        // std::cout << "\n";
     }
 };
 

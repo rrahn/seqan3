@@ -165,7 +165,7 @@ constexpr auto align_pairwise(sequence_t && sequences,
     // Configure the alignment algorithm.
     auto && [algorithm, complete_config] = detail::alignment_configurator::configure<decltype(seq_view)>(config);
 
-    using traits_t = detail::alignment_configuration_traits<remove_cvref_t<decltype(complete_config)>>;
+    using traits_t = detail::configuration_traits_t<remove_cvref_t<decltype(complete_config)>>;
     //!brief Lambda function to translate specified parallel and or vectorised configurations into their execution rules.
     constexpr auto get_execution_rule = [] ()
     {

@@ -22,8 +22,12 @@
 #include <seqan3/alignment/matrix/detail/alignment_score_matrix_one_column_banded.hpp>
 #include <seqan3/alignment/matrix/detail/alignment_trace_matrix_full.hpp>
 #include <seqan3/alignment/matrix/detail/alignment_trace_matrix_full_banded.hpp>
+#include <seqan3/alignment/pairwise/detail/pairwise_alignment_algorithm.hpp>
+#include <seqan3/alignment/pairwise/detail/pairwise_alignment_algorithm_tile.hpp>
+#include <seqan3/alignment/pairwise/detail/policy_affine_gap_recursion_simd_tile.hpp>
 #include <seqan3/alignment/pairwise/detail/policy_affine_gap_recursion_simd.hpp>
 #include <seqan3/alignment/pairwise/detail/policy_affine_gap_recursion.hpp>
+#include <seqan3/alignment/pairwise/detail/policy_optimum_tracker_simd_tile.hpp>
 #include <seqan3/alignment/pairwise/detail/policy_optimum_tracker_simd.hpp>
 #include <seqan3/alignment/pairwise/detail/policy_optimum_tracker.hpp>
 #include <seqan3/alignment/pairwise/detail/policy_scoring_scheme.hpp>
@@ -354,7 +358,7 @@ private:
     template <typename function_wrapper_t, typename config_t>
     static constexpr function_wrapper_t configure_edit_distance(config_t const & cfg)
     {
-        using traits_t = alignment_configuration_traits<config_t>;
+        using traits_t = configuration_traits_t<config_t>;
 
         // ----------------------------------------------------------------------------
         // Unsupported configurations
@@ -494,7 +498,7 @@ private:
     template <typename function_wrapper_t, typename ...policies_t, typename config_t>
     static constexpr function_wrapper_t make_algorithm(config_t const & cfg)
     {
-        using traits_t = alignment_configuration_traits<config_t>;
+        using traits_t = configuration_traits_t<config_t>;
 
         // Temporarily we will use the new and the old alignment implementation in order to
         // refactor step-by-step to the new implementation. The new implementation will be tested in
@@ -517,15 +521,15 @@ private:
             using matrix_index_t = typename traits_t::matrix_index_type;
             using update_operation_t =
                 lazy_conditional_t<traits_t::is_vectorised,
-                                   lazy<alignment_optimum_updater_greater_equal_global_alignment_simd, matrix_index_t>,
+                                   lazy<alignment_optimum_updater_greater_equal_global_alignment_simd_2, matrix_index_t>,
                                    alignment_optimum_updater_greater_equal>;
             using optimum_tracker_policy_t =
                 std::conditional_t<traits_t::is_vectorised,
-                                   policy_optimum_tracker_simd<config_t, update_operation_t>,
+                                   policy_optimum_tracker_simd_tile<config_t, update_operation_t>,
                                    policy_optimum_tracker<config_t, update_operation_t>>;
 
             using gap_cost_policy_t = std::conditional_t<traits_t::is_vectorised,
-                                                         policy_affine_gap_recursion_simd<config_t>,
+                                                         policy_affine_gap_recursion_simd_tile<config_t>,
                                                          policy_affine_gap_recursion<config_t>>;
 
             using alignment_scoring_scheme_t =
@@ -538,10 +542,10 @@ private:
 
             using scoring_scheme_policy_t = policy_scoring_scheme<config_t, alignment_scoring_scheme_t>;
 
-            return pairwise_alignment_algorithm<config_t,
-                                                gap_cost_policy_t,
-                                                optimum_tracker_policy_t,
-                                                scoring_scheme_policy_t>{cfg};
+            return pairwise_alignment_algorithm_tile<config_t,
+                                                     gap_cost_policy_t,
+                                                     optimum_tracker_policy_t,
+                                                     scoring_scheme_policy_t>{cfg};
         }
     }
 };
@@ -550,7 +554,7 @@ private:
 template <typename function_wrapper_t, typename config_t>
 constexpr function_wrapper_t alignment_configurator::configure_scoring_scheme(config_t const & cfg)
 {
-    using traits_t = alignment_configuration_traits<config_t>;
+    using traits_t = configuration_traits_t<config_t>;
 
     using alignment_scoring_scheme_t =
         lazy_conditional_t<traits_t::is_vectorised,
@@ -569,7 +573,7 @@ constexpr function_wrapper_t alignment_configurator::configure_scoring_scheme(co
 template <typename function_wrapper_t, typename ...policies_t, typename config_t>
 constexpr function_wrapper_t alignment_configurator::configure_free_ends_initialisation(config_t const & cfg)
 {
-    using traits_t = alignment_configuration_traits<config_t>;
+    using traits_t = configuration_traits_t<config_t>;
     // Get the value for the sequence ends configuration.
     auto align_ends_cfg = cfg.template value_or<align_cfg::aligned_ends>(free_ends_none);
     using align_ends_cfg_t = decltype(align_ends_cfg);
@@ -640,7 +644,7 @@ constexpr function_wrapper_t alignment_configurator::configure_free_ends_initial
 template <typename function_wrapper_t, typename ...policies_t, typename config_t>
 constexpr function_wrapper_t alignment_configurator::configure_free_ends_optimum_search(config_t const & cfg)
 {
-    using traits_t = alignment_configuration_traits<config_t>;
+    using traits_t = configuration_traits_t<config_t>;
 
     // Get the value for the sequence ends configuration.
     auto align_ends_cfg = cfg.template value_or<align_cfg::aligned_ends>(free_ends_none);

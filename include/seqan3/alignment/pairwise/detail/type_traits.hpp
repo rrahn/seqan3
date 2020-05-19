@@ -68,7 +68,7 @@ struct chunked_indexed_sequence_pairs
 };
 
 //------------------------------------------------------------------------------
-// alignment_configuration_traits
+// configuration_traits
 //------------------------------------------------------------------------------
 
 /*!\brief A traits type for the alignment algorithm that exposes static information stored within the alignment
@@ -82,9 +82,16 @@ template <typename configuration_t>
 //!\cond
     requires is_type_specialisation_of_v<std::remove_cv_t<configuration_t>, configuration>
 //!\endcond
-struct alignment_configuration_traits
+struct configuration_traits
 {
 private:
+    //!\brief An integral constant alias which stores the simd length of the given simd type.
+    template <simd_concept simd_t>
+    using simd_length_constant_t = std::integral_constant<size_t, simd_traits<simd_t>::length>;
+
+    template <simd_concept simd_t>
+    using simd_scalar_type_t = typename simd_traits<simd_t>::scalar_type;
+
     //!\brief Transforms integral types to unsigned types and chooses the minimal viable uint for floating point types.
     template <arithmetic score_t>
     using select_scalar_index_t = lazy_conditional_t<std::integral<score_t>,
@@ -107,9 +114,12 @@ private:
     }
 
 public:
-    //!\brief Flag to indicate vectorised mode.
-    static constexpr bool is_vectorised =
+    static constexpr bool is_vectorised_static =
         configuration_t::template exists<remove_cvref_t<decltype(align_cfg::vectorise)>>();
+    static constexpr bool is_vectorised_dynamic =
+        configuration_t::template exists<remove_cvref_t<decltype(align_cfg::vectorised_dynamic)>>();
+    //!\brief Flag to indicate vectorised mode.
+    static constexpr bool is_vectorised = is_vectorised_static || is_vectorised_dynamic;
     //!\brief Flag indicating whether parallel alignment mode is enabled.
     static constexpr bool is_parallel = configuration_t::template exists<align_cfg::parallel>();
     //!\brief Flag indicating whether global alignment mode is enabled.
@@ -136,14 +146,25 @@ public:
     //!\brief The original score type selected by the user.
     using original_score_type = typename result_type::score_type;
     //!\brief The score type for the alignment algorithm.
-    using score_type = std::conditional_t<is_vectorised, simd_type_t<original_score_type>, original_score_type>;
+    using score_type = std::conditional_t<is_vectorised,
+                                          std::conditional_t<is_vectorised_dynamic,
+                                                             simd_type_t<int8_t>,
+                                                             simd_type_t<original_score_type>>,
+                                          original_score_type>;
     //!\brief The trace directions type for the alignment algorithm.
-    using trace_type = std::conditional_t<is_vectorised, simd_type_t<original_score_type>, trace_directions>;
+    using trace_type = std::conditional_t<is_vectorised, score_type, trace_directions>;
+    //!\brief The type used for the padding symbol.
+    using padding_symbol_type = lazy_conditional_t<is_vectorised,
+                                                   lazy<simd_scalar_type_t, score_type>,
+                                                   original_score_type>;
     //!\brief The alignment result type if present. Otherwise seqan3::detail::empty_type.
     using alignment_result_type = decltype(determine_alignment_result_type());
     //!\brief The type of the matrix index.
     using matrix_index_type = std::conditional_t<is_vectorised,
-                                                 simd_type_t<select_scalar_index_t<original_score_type>>,
+                                                 std::conditional_t<is_vectorised_dynamic,
+                                                                    simd_type_t<uint8_t>,
+                                                                    simd_type_t<select_scalar_index_t<
+                                                                                    original_score_type>>>,
                                                  size_t>;
     //!\brief The type of the matrix coordinate.
     using matrix_coordinate_type = lazy_conditional_t<is_vectorised,
@@ -151,13 +172,9 @@ public:
                                                       matrix_coordinate>;
 
     //!\brief The number of alignments that can be computed in one simd vector.
-    static constexpr size_t alignments_per_vector = [] () constexpr
-                                                    {
-                                                        if constexpr (is_vectorised)
-                                                            return simd_traits<score_type>::length;
-                                                        else
-                                                            return 1;
-                                                    }();
+    static constexpr size_t alignments_per_vector = lazy_conditional_t<is_vectorised,
+                                                                       lazy<simd_length_constant_t, score_type>,
+                                                                       std::integral_constant<size_t, 1>>::value;
     //!\brief The rank of the selected result type.
     static constexpr int8_t result_type_rank = static_cast<int8_t>(decltype(std::declval<result_type>().value)::rank);
     //!\brief Flag indicating whether the score shall be computed.
@@ -169,9 +186,16 @@ public:
     //!\brief Flag indicating whether the sequence alignment shall be computed.
     static constexpr bool compute_sequence_alignment = result_type_rank >= 3;
     //!\brief The padding symbol to use for the computation of the alignment.
-    static constexpr original_score_type padding_symbol =
-        static_cast<original_score_type>(1u << (sizeof_bits<original_score_type> - 1));
+    static constexpr padding_symbol_type padding_symbol =
+        static_cast<padding_symbol_type>(1u << (sizeof_bits<padding_symbol_type> - 1));
 };
+
+// Choose correct configuration based on the selected simd execution method.
+template <typename configuration_t>
+//!\cond
+    requires is_type_specialisation_of_v<std::remove_cv_t<configuration_t>, configuration>
+//!\endcond
+using configuration_traits_t = configuration_traits<configuration_t>;
 
 //------------------------------------------------------------------------------
 // alignment_function_traits

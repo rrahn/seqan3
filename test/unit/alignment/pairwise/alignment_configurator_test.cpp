@@ -33,7 +33,7 @@ auto run_test(config_t const & cfg)
     auto indexed_sequence_pairs = seqan3::views::zip(r, std::views::iota(0)) | seqan3::views::chunk(1);
 
     using complete_configuration_t = decltype(complete_config);
-    using traits_t = seqan3::detail::alignment_configuration_traits<complete_configuration_t>;
+    using traits_t = seqan3::detail::configuration_traits_t<complete_configuration_t>;
     using alignment_result_t = typename traits_t::alignment_result_type;
 
     alignment_result_t align_result{};

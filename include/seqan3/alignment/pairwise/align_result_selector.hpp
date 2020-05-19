@@ -52,7 +52,7 @@ struct align_result_selector
 {
 private:
     //!\brief The user configured score type.
-    using score_type = typename alignment_configuration_traits<
+    using score_type = typename configuration_traits_t<
                                     std::remove_reference_t<configuration_t>>::original_score_type;
 
     //!\brief Helper function to determine the actual result type.

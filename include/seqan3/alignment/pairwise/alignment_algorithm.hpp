@@ -83,7 +83,7 @@ class alignment_algorithm :
 private:
 
     //!\brief The alignment configuration traits type with auxiliary information extracted from the configuration type.
-    using traits_t = alignment_configuration_traits<config_t>;
+    using traits_t = configuration_traits_t<config_t>;
     //!\brief The type of an alignment column as defined by the respective matrix policy.
     using alignment_column_t = decltype(std::declval<alignment_algorithm>().current_alignment_column());
     //!\brief The iterator type over the alignment column.
