@@ -184,6 +184,8 @@ public:
                                                      compute_end_positions ||
                                                      compute_begin_positions ||
                                                      compute_sequence_alignment;
+    //!\brief Flag indicating whether the trace matrix needs to be computed.
+    static constexpr bool requires_trace_information = compute_begin_positions || compute_sequence_alignment;
     //!\brief The padding symbol to use for the computation of the alignment.
     static constexpr original_score_type padding_symbol =
         static_cast<original_score_type>(1u << (sizeof_bits<original_score_type> - 1));
