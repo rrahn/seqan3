@@ -12,6 +12,7 @@
 
 #pragma once
 
+#include <seqan3/std/concepts>
 #include <tuple>
 #include <type_traits>
 
@@ -131,16 +132,79 @@ public:
     /*!\name Constructors, destructor and assignment
      * \{
      */
-    affine_cell_proxy()= default; //!< Defaulted.
+    affine_cell_proxy() = default; //!< Defaulted.
     affine_cell_proxy(affine_cell_proxy const &) = default; //!< Defaulted.
     affine_cell_proxy(affine_cell_proxy &&) = default; //!< Defaulted.
     affine_cell_proxy & operator=(affine_cell_proxy const &) = default; //!< Defaulted.
     affine_cell_proxy & operator=(affine_cell_proxy &&) = default; //!< Defaulted.
     ~affine_cell_proxy() = default; //!< Defaulted.
 
-    // Inherit the tuple constructors and assignment.
+    // Inherit the base class's constructor to enable element-wise initialisation (direct and converting constructor).
     using tuple_t::tuple_t;
-    using tuple_t::operator=;
+
+    //!\brief Converting constructor. Initialises from another tuple type.
+    template <typename other_tuple_t>
+        requires std::constructible_from<tuple_t, other_tuple_t &&>
+    explicit affine_cell_proxy(other_tuple_t && other) :
+        tuple_t{std::forward<other_tuple_t>(other)}
+    {}
+
+    //!\brief Converting copy-constructor.
+    template <typename other_tuple_t>
+        requires std::constructible_from<tuple_t, other_tuple_t &>
+    explicit affine_cell_proxy(affine_cell_proxy<other_tuple_t> & other) :
+        tuple_t{static_cast<other_tuple_t &>(other)}
+    {}
+
+    //!\brief Converting copy-constructor.
+    template <typename other_tuple_t>
+        requires std::constructible_from<tuple_t, other_tuple_t const &>
+    explicit affine_cell_proxy(affine_cell_proxy<other_tuple_t> const & other) :
+        tuple_t{static_cast<other_tuple_t const &>(other)}
+    {}
+
+    //!\brief Converting move-constructor.
+    template <typename other_tuple_t>
+        requires std::constructible_from<tuple_t, other_tuple_t>
+    explicit affine_cell_proxy(affine_cell_proxy<other_tuple_t> && other) :
+        tuple_t{static_cast<other_tuple_t &&>(std::move(other))}
+    {}
+
+    //!\brief Converting assignment. Initialises from another tuple type.
+    template <typename other_tuple_t>
+        requires (std::assignable_from<tuple_t &, other_tuple_t &&>)
+    affine_cell_proxy & operator=(other_tuple_t && other)
+    {
+        to_base() = std::forward<other_tuple_t>(other);
+        return *this;
+    }
+
+    //!\brief Converting copy-assignment.
+    template <typename other_tuple_t>
+        requires (std::assignable_from<tuple_t &, other_tuple_t &>)
+    affine_cell_proxy & operator=(affine_cell_proxy<other_tuple_t> & other)
+    {
+        to_base() = static_cast<other_tuple_t &>(other);
+        return *this;
+    }
+
+    //!\brief Converting copy-assignment.
+    template <typename other_tuple_t>
+        requires (std::assignable_from<tuple_t &, other_tuple_t const &>)
+    affine_cell_proxy & operator=(affine_cell_proxy<other_tuple_t> const & other)
+    {
+        to_base() = static_cast<other_tuple_t const &>(other);
+        return *this;
+    }
+
+    //!\brief Converting move-assignment.
+    template <typename other_tuple_t>
+        requires (std::assignable_from<tuple_t &, other_tuple_t>)
+    affine_cell_proxy & operator=(affine_cell_proxy<other_tuple_t> && other)
+    {
+        to_base() = static_cast<other_tuple_t &&>(std::move(other));
+        return *this;
+    }
     //!\}
 
     /*!\name Score value accessor
@@ -272,11 +336,150 @@ private:
 
         return get<index>(get<1>(std::forward<this_t>(me)));
     }
+
+    //!\brief Casts `this` to the base class type.
+    tuple_t & to_base() noexcept
+    {
+        return static_cast<tuple_t &>(*this);
+    }
 };
 } // namespace seqan3::detail
 
+#ifndef __cpp_lib_concepts
+// NOTE: As long as we use the ranges library as emulation of c++20 concepts we need to provide special overloads in the
+// dedicated concepts namespace for common_type and basic_common_reference.
+namespace concepts
+{
+//!\cond
+// Common type for two affine_cell_proxy types.
+template<typename tuple1_t, typename tuple2_t>
+struct common_type<seqan3::detail::affine_cell_proxy<tuple1_t>, seqan3::detail::affine_cell_proxy<tuple2_t>> :
+    public common_type<tuple1_t, tuple2_t>
+{};
+
+// Common type for affine_cell_proxy type on LHS with any other tuple type (e.g. std::tuple, seqan3::common_tuple).
+template<typename tuple1_t, typename tuple2_t>
+    requires (!seqan3::detail::is_type_specialisation_of_v<seqan3::remove_cvref_t<tuple2_t>, seqan3::detail::affine_cell_proxy>)
+struct common_type<seqan3::detail::affine_cell_proxy<tuple1_t>, tuple2_t> :
+    public common_type<tuple1_t, tuple2_t>
+{};
+
+// Common type for affine_cell_proxy type on RHS with any other tuple type (e.g. std::tuple, seqan3::common_tuple).
+template<typename tuple1_t, typename tuple2_t>
+    requires (!seqan3::detail::is_type_specialisation_of_v<seqan3::remove_cvref_t<tuple1_t>, seqan3::detail::affine_cell_proxy>)
+struct common_type<tuple1_t, seqan3::detail::affine_cell_proxy<tuple2_t>> :
+    public common_type<tuple1_t, tuple2_t>
+{};
+//!\endcond
+
+//!\cond
+// Common reference for two affine_cell_proxy types.
+template<typename tuple1_t,
+         typename tuple2_t,
+         template <typename> typename type_qualifiers_1_t,
+         template <typename> typename type_qualifiers_2_t>
+struct basic_common_reference<seqan3::detail::affine_cell_proxy<tuple1_t>,
+                              seqan3::detail::affine_cell_proxy<tuple2_t>,
+                              type_qualifiers_1_t,
+                              type_qualifiers_2_t>
+    : common_reference<type_qualifiers_1_t<tuple1_t>, type_qualifiers_2_t<tuple2_t>>
+{};
+
+// Common reference for affine_cell_proxy type on LHS with any other tuple type (e.g. std::tuple, seqan3::common_tuple).
+template<typename tuple1_t,
+         typename tuple2_t,
+         template <typename> typename type_qualifiers_1_t,
+         template <typename> typename type_qualifiers_2_t>
+    requires (!seqan3::detail::is_type_specialisation_of_v<tuple2_t, seqan3::detail::affine_cell_proxy>)
+struct basic_common_reference<seqan3::detail::affine_cell_proxy<tuple1_t>,
+                              tuple2_t,
+                              type_qualifiers_1_t,
+                              type_qualifiers_2_t>
+    : common_reference<type_qualifiers_1_t<tuple1_t>, type_qualifiers_2_t<tuple2_t>>
+{};
+
+// Common reference for affine_cell_proxy type on RHS with any other tuple type (e.g. std::tuple, seqan3::common_tuple).
+template<typename tuple1_t,
+         typename tuple2_t,
+         template <typename> typename type_qualifiers_1_t,
+         template <typename> typename type_qualifiers_2_t>
+    requires (!seqan3::detail::is_type_specialisation_of_v<tuple1_t, seqan3::detail::affine_cell_proxy>)
+struct basic_common_reference<tuple1_t,
+                              seqan3::detail::affine_cell_proxy<tuple2_t>,
+                              type_qualifiers_1_t,
+                              type_qualifiers_2_t>
+    : common_reference<type_qualifiers_1_t<tuple1_t>, type_qualifiers_2_t<tuple2_t>>
+{};
+//!\endcond
+}
+#endif // __cpp_lib_concepts
+
 namespace std
 {
+#ifdef __cpp_lib_ranges
+//!\cond
+// Common type for two affine_cell_proxy types.
+template<typename tuple1_t, typename tuple2_t>
+struct common_type<seqan3::detail::affine_cell_proxy<tuple1_t>, seqan3::detail::affine_cell_proxy<tuple2_t>> :
+    public common_type<tuple1_t, tuple2_t>
+{};
+
+// Common type for affine_cell_proxy type on LHS with any other tuple type (e.g. std::tuple, seqan3::common_tuple).
+template<typename tuple1_t, typename tuple2_t>
+    requires (!seqan3::detail::is_type_specialisation_of_v<seqan3::remove_cvref_t<tuple2_t>, seqan3::detail::affine_cell_proxy>)
+struct common_type<seqan3::detail::affine_cell_proxy<tuple1_t>, tuple2_t> :
+    public common_type<tuple1_t, tuple2_t>
+{};
+
+// Common type for affine_cell_proxy type on RHS with any other tuple type (e.g. std::tuple, seqan3::common_tuple).
+template<typename tuple1_t, typename tuple2_t>
+    requires (!seqan3::detail::is_type_specialisation_of_v<seqan3::remove_cvref_t<tuple1_t>, seqan3::detail::affine_cell_proxy>)
+struct common_type<tuple1_t, seqan3::detail::affine_cell_proxy<tuple2_t>> :
+    public common_type<tuple1_t, tuple2_t>
+{};
+//!\endcond
+
+//!\cond
+// Common reference for two affine_cell_proxy types.
+template<typename tuple1_t,
+         typename tuple2_t,
+         template <typename> typename type_qualifiers_1_t,
+         template <typename> typename type_qualifiers_2_t>
+struct basic_common_reference<seqan3::detail::affine_cell_proxy<tuple1_t>,
+                              seqan3::detail::affine_cell_proxy<tuple2_t>,
+                              type_qualifiers_1_t,
+                              type_qualifiers_2_t>
+    : common_reference<type_qualifiers_1_t<tuple1_t>, type_qualifiers_2_t<tuple2_t>>
+{};
+
+// Common reference for affine_cell_proxy type on LHS with any other tuple type (e.g. std::tuple, seqan3::common_tuple).
+template<typename tuple1_t,
+         typename tuple2_t,
+         template <typename> typename type_qualifiers_1_t,
+         template <typename> typename type_qualifiers_2_t>
+    requires (!seqan3::detail::is_type_specialisation_of_v<tuple2_t, seqan3::detail::affine_cell_proxy>)
+struct basic_common_reference<seqan3::detail::affine_cell_proxy<tuple1_t>,
+                              tuple2_t,
+                              type_qualifiers_1_t,
+                              type_qualifiers_2_t>
+    : common_reference<type_qualifiers_1_t<tuple1_t>, type_qualifiers_2_t<tuple2_t>>
+{};
+
+// Common reference for affine_cell_proxy type on RHS with any other tuple type (e.g. std::tuple, seqan3::common_tuple).
+template<typename tuple1_t,
+         typename tuple2_t,
+         template <typename> typename type_qualifiers_1_t,
+         template <typename> typename type_qualifiers_2_t>
+    requires (!seqan3::detail::is_type_specialisation_of_v<tuple1_t, seqan3::detail::affine_cell_proxy>)
+struct basic_common_reference<tuple1_t,
+                              seqan3::detail::affine_cell_proxy<tuple2_t>,
+                              type_qualifiers_1_t,
+                              type_qualifiers_2_t>
+    : common_reference<type_qualifiers_1_t<tuple1_t>, type_qualifiers_2_t<tuple2_t>>
+{};
+//!\endcond
+#endif // __cpp_lib_ranges
+
 //!\cond
 template <typename tuple_t>
 struct tuple_size<seqan3::detail::affine_cell_proxy<tuple_t>> : tuple_size<tuple_t>
