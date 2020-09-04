@@ -159,6 +159,7 @@ public:
                                          std::move(idx),
                                          std::move(score),
                                          std::move(coordinate),
+                                         alignment_matrix,
                                          callback);
             ++index;
         }
