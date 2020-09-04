@@ -130,7 +130,7 @@ protected:
      * * \f$ V[i, j] = \max \{M[i - 1, j] + g_o, V[i - 1, j] + g_e\}\f$
      * * \f$ M[i, j] = \max \{M[i - 1, j - 1] + \delta, H[i, j], V[i, j]\}\f$
      */
-    template <affine_score_cell affine_cell_t>
+    template <affine_cell_proxy_instance affine_cell_t>
     affine_cell_type compute_inner_cell(score_type diagonal_score,
                                         affine_cell_t previous_cell,
                                         score_type const sequence_score) const noexcept
@@ -154,7 +154,7 @@ protected:
     }
 
     //!\overload
-    template <affine_score_and_trace_cell affine_cell_t>
+    template <affine_cell_proxy_with_trace_instance affine_cell_t>
     affine_cell_type compute_inner_cell(score_type diagonal_score,
                                         affine_cell_t previous_cell,
                                         score_type const sequence_score) const noexcept
@@ -201,7 +201,7 @@ protected:
      * \f$V[0, 0] = H[0, 0] = g_o\f$.
      */
     affine_cell_type initialise_origin_cell() const noexcept
-        requires affine_score_cell<affine_cell_type>
+        requires affine_cell_proxy_instance<affine_cell_type>
     {
         return {score_type{},
                 first_row_is_free ? score_type{} : gap_open_score,
@@ -210,12 +210,14 @@ protected:
 
     //!\overload
     affine_cell_type initialise_origin_cell() const noexcept
-        requires affine_score_and_trace_cell<affine_cell_type>
+        requires affine_cell_proxy_with_trace_instance<affine_cell_type>
     {
         return {{score_type{},
-                                 first_row_is_free ? score_type{} : gap_open_score,
-                                 first_column_is_free ? score_type{} : gap_open_score},
-                {trace_directions::none, trace_directions::left_open, trace_directions::up_open}};
+                 first_row_is_free ? score_type{} : gap_open_score,
+                 first_column_is_free ? score_type{} : gap_open_score},
+                {trace_directions::none,
+                 first_row_is_free ? trace_directions::none : trace_directions::left_open,
+                 first_column_is_free ? trace_directions::none : trace_directions::up_open}};
     }
 
     /*!\brief Initialises a cell of the first alignment matrix column.
@@ -232,7 +234,7 @@ protected:
      * which is equal to \f$V[i, 0] = M[i, 0] = g_o + g_e * i\f$. The horizontal score is initialised to
      * \f$H[i, 0] = V[i, 0] + g_o\f$ to prohibit extending a gap in the horizontal matrix from \f$H[i, 0]\f$.
      */
-    template <affine_score_cell affine_cell_t>
+    template <affine_cell_proxy_instance affine_cell_t>
     affine_cell_type initialise_first_column_cell(affine_cell_t previous_cell) const noexcept
     {
         score_type new_vertical = previous_cell.vertical_score() + gap_extension_score;
@@ -242,12 +244,16 @@ protected:
     }
 
     //!\overload
-    template <affine_score_and_trace_cell affine_cell_t>
+    template <affine_cell_proxy_with_trace_instance affine_cell_t>
     affine_cell_type initialise_first_column_cell(affine_cell_t previous_cell) const noexcept
     {
         score_type new_vertical = previous_cell.vertical_score() + gap_extension_score;
-        return {{previous_cell.vertical_score(), previous_cell.vertical_score() + gap_open_score, new_vertical},
-                {previous_cell.vertical_trace(), trace_directions::left_open, trace_directions::up}};
+        return {{previous_cell.vertical_score(),
+                 previous_cell.vertical_score() + gap_open_score,
+                 first_column_is_free ? previous_cell.vertical_score() : new_vertical},
+                {previous_cell.vertical_trace(),
+                 trace_directions::left_open,
+                 first_column_is_free ? trace_directions::none : trace_directions::up}};
     }
 
     /*!\brief Initialises the first cell of a alignment matrix column.
@@ -264,7 +270,7 @@ protected:
      * which is equal to \f$H[0, j] = M[0, j] = g_o + g_e * j\f$. The vertical score is initialised to
      * \f$V[0,j] = H[0, j] + g_o\f$ to prohibit extending a gap in the vertical matrix from \f$V[0, j]\f$.
      */
-    template <affine_score_cell affine_cell_t>
+    template <affine_cell_proxy_instance affine_cell_t>
     affine_cell_type initialise_first_row_cell(affine_cell_t previous_cell) const noexcept
     {
         score_type new_horizontal_score = previous_cell.horizontal_score() + gap_extension_score;
@@ -274,14 +280,16 @@ protected:
     }
 
     //!\overload
-    template <affine_score_and_trace_cell affine_cell_t>
+    template <affine_cell_proxy_with_trace_instance affine_cell_t>
     affine_cell_type initialise_first_row_cell(affine_cell_t previous_cell) const noexcept
     {
         score_type new_horizontal_score = previous_cell.horizontal_score() + gap_extension_score;
         return {{previous_cell.horizontal_score(),
-                 new_horizontal_score,
+                 first_row_is_free ? previous_cell.horizontal_score() : new_horizontal_score,
                  previous_cell.horizontal_score() + gap_open_score},
-                {previous_cell.horizontal_trace(), trace_directions::left, trace_directions::up_open}};
+                {previous_cell.horizontal_trace(),
+                 first_row_is_free ? trace_directions::none : trace_directions::left,
+                 trace_directions::up_open}};
     }
 
     /*!\brief Returns the lowest viable score.

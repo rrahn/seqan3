@@ -82,7 +82,7 @@ protected:
      * * \f$ H[i, j] = \max \{M[i, j - 1] + g_o, H[i, j - 1] + g_e\}\f$
      * * \f$ M[i, j] = \max \{M[i - 1, j - 1] + \delta, H[i, j]\}\f$
      */
-    template <affine_score_cell affine_cell_t>
+    template <affine_cell_proxy_instance affine_cell_t>
     affine_cell_type initialise_band_first_cell(score_type diagonal_score,
                                                 affine_cell_t previous_cell,
                                                 score_type const sequence_score) const noexcept
@@ -99,7 +99,7 @@ protected:
     }
 
     //!\overload
-    template <affine_score_and_trace_cell affine_cell_t>
+    template <affine_cell_proxy_with_trace_instance affine_cell_t>
     affine_cell_type initialise_band_first_cell(score_type diagonal_score,
                                                 affine_cell_t previous_cell,
                                                 score_type const sequence_score) const noexcept

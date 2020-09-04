@@ -422,6 +422,31 @@ private:
         return static_cast<tuple_t &>(*this);
     }
 };
+
+/*!\interface seqan3::detail::affine_cell_proxy_instance <>
+ * \brief The concept for a type that is an instance of seqan3::detail::affine_cell_proxy.
+ * \ingroup alignment_matrix
+ */
+//!\cond
+template <typename t>
+SEQAN3_CONCEPT affine_cell_proxy_instance = is_type_specialisation_of_v<t, affine_cell_proxy>;
+//!\endcond
+
+/*!\interface seqan3::detail::affine_cell_proxy_with_trace_instance <>
+ * \brief The concept for a type that is an instance of seqan3::detail::affine_cell_proxy including trace information.
+ * \ingroup alignment_matrix
+ */
+//!\cond
+template <typename t>
+SEQAN3_CONCEPT affine_cell_proxy_with_trace_instance = affine_cell_proxy_instance<t> &&
+requires (t proxy)
+{
+    { proxy.best_trace() };
+    { proxy.horizontal_trace() };
+    { proxy.vertical_trace() };
+};
+//!\endcond
+
 } // namespace seqan3::detail
 
 #ifndef __cpp_lib_concepts
