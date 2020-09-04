@@ -145,6 +145,7 @@ public:
                                          std::move(idx),
                                          this->optimal_score,
                                          this->optimal_coordinate,
+                                         alignment_matrix,
                                          callback);
         }
     }
@@ -191,6 +192,7 @@ public:
                                          std::move(idx),
                                          std::move(score),
                                          std::move(coordinate),
+                                         alignment_matrix,
                                          callback);
             ++index;
         }
