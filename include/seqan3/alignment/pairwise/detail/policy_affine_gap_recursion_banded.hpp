@@ -89,39 +89,40 @@ protected:
     {
         diagonal_score += sequence_score;
         score_type horizontal_score = previous_cell.horizontal_score();
+        [[maybe_unused]] trace_directions best_trace{};
 
-        diagonal_score = (diagonal_score < horizontal_score) ? horizontal_score : diagonal_score;
-
-        score_type from_optimal_score = diagonal_score + gap_open_score;
-        horizontal_score += gap_extension_score;
-        horizontal_score = (horizontal_score < from_optimal_score) ? from_optimal_score : horizontal_score;
-        return {diagonal_score, horizontal_score, from_optimal_score};
-    }
-
-    //!\overload
-    template <affine_cell_proxy_with_trace_instance affine_cell_t>
-    affine_cell_type initialise_band_first_cell(score_type diagonal_score,
-                                                affine_cell_t previous_cell,
-                                                score_type const sequence_score) const noexcept
-    {
-        diagonal_score += sequence_score;
-        score_type horizontal_score = previous_cell.horizontal_score();
-        trace_directions best_trace = previous_cell.horizontal_trace();
-
-        diagonal_score = (diagonal_score < horizontal_score)
-                       ? horizontal_score
-                       : (best_trace |= trace_directions::diagonal, diagonal_score);
+        if constexpr (affine_cell_proxy_with_trace_instance<affine_cell_t>)
+        {
+            best_trace = previous_cell.horizontal_trace();
+            diagonal_score = (diagonal_score < horizontal_score)
+                           ? horizontal_score
+                           : (best_trace |= trace_directions::diagonal, diagonal_score);
+        }
+        else
+        {
+            diagonal_score = (diagonal_score < horizontal_score) ? horizontal_score : diagonal_score;
+        }
 
         score_type from_optimal_score = diagonal_score + gap_open_score;
-        trace_directions next_horizontal_trace = trace_directions::left;
 
-        horizontal_score += gap_extension_score;
-        horizontal_score = (horizontal_score < from_optimal_score)
-                         ? (next_horizontal_trace = trace_directions::left_open, from_optimal_score)
-                         : horizontal_score;
+        if constexpr (affine_cell_proxy_with_trace_instance<affine_cell_t>)
+        {
+            trace_directions next_horizontal_trace = trace_directions::left;
 
-        return {{diagonal_score, horizontal_score, from_optimal_score},
-                {best_trace, next_horizontal_trace, trace_directions::up_open}};
+            horizontal_score += gap_extension_score;
+            horizontal_score = (horizontal_score < from_optimal_score)
+                            ? (next_horizontal_trace = trace_directions::left_open, from_optimal_score)
+                            : horizontal_score;
+
+            return {{diagonal_score, horizontal_score, from_optimal_score},
+                    {best_trace, next_horizontal_trace, trace_directions::up_open}};
+        }
+        else
+        {
+            horizontal_score += gap_extension_score;
+            horizontal_score = (horizontal_score < from_optimal_score) ? from_optimal_score : horizontal_score;
+            return {diagonal_score, horizontal_score, from_optimal_score};
+        }
     }
 };
 } // namespace seqan3::detail
