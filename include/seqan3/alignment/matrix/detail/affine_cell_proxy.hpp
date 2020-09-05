@@ -128,6 +128,18 @@ private:
                                                std::tuple_element_t<1, tuple_t>,
                                                empty_type>;
 
+#ifdef SEQAN3_WORKAROUND_GCC_96922
+    /*!\brief Auxiliary concept helper
+     *
+     * \details
+     *
+     * Helper variable to circumvent gcc compiler bug, when using parenthesis around requires expression with a
+     * concept that has a variadic template in its definition.
+     */
+    template <typename to_t, typename from_t>
+    static constexpr bool constructible_from_aux = std::constructible_from<to_t, from_t>;
+#endif // SEQAN3_WORKAROUND_GCC_96922
+
 public:
     /*!\name Constructors, destructor and assignment
      * \{
@@ -145,7 +157,11 @@ public:
     //!\brief Converting constructor. Initialises from another tuple type.
     template <typename other_tuple_t>
     //!\cond
-        requires std::constructible_from<tuple_t, other_tuple_t &&>
+#ifdef SEQAN3_WORKAROUND_GCC_96922
+        requires (constructible_from_aux<tuple_t, other_tuple_t &&>)
+#else // workaround ^^^|vvv no workaround
+        requires (std::constructible_from<tuple_t, other_tuple_t &&>)
+#endif // SEQAN3_WORKAROUND_GCC_96922
     //!\endcond
     explicit affine_cell_proxy(other_tuple_t && other) :
         tuple_t{std::forward<other_tuple_t>(other)}
@@ -154,7 +170,11 @@ public:
     //!\brief Converting copy-constructor.
     template <typename other_tuple_t>
     //!\cond
-        requires std::constructible_from<tuple_t, other_tuple_t &>
+#ifdef SEQAN3_WORKAROUND_GCC_96922
+        requires (constructible_from_aux<tuple_t, other_tuple_t &>)
+#else // workaround ^^^|vvv no workaroun
+        requires (std::constructible_from<tuple_t, other_tuple_t &>)
+#endif // SEQAN3_WORKAROUND_GCC_96922
     //!\endcond
     explicit affine_cell_proxy(affine_cell_proxy<other_tuple_t> & other) :
         tuple_t{static_cast<other_tuple_t &>(other)}
@@ -163,7 +183,11 @@ public:
     //!\brief Converting copy-constructor.
     template <typename other_tuple_t>
     //!\cond
-        requires std::constructible_from<tuple_t, other_tuple_t const &>
+#ifdef SEQAN3_WORKAROUND_GCC_96922
+        requires (constructible_from_aux<tuple_t, other_tuple_t const &>)
+#else // workaround ^^^|vvv no workaround
+        requires (std::constructible_from<tuple_t, other_tuple_t const &>)
+#endif // SEQAN3_WORKAROUND_GCC_96922
     //!\endcond
     explicit affine_cell_proxy(affine_cell_proxy<other_tuple_t> const & other) :
         tuple_t{static_cast<other_tuple_t const &>(other)}
@@ -172,7 +196,11 @@ public:
     //!\brief Converting move-constructor.
     template <typename other_tuple_t>
     //!\cond
-        requires std::constructible_from<tuple_t, other_tuple_t>
+#ifdef SEQAN3_WORKAROUND_GCC_96922
+        requires (constructible_from_aux<tuple_t, other_tuple_t>)
+#else // workaround ^^^|vvv no workaround
+        requires (std::constructible_from<tuple_t, other_tuple_t>)
+#endif // SEQAN3_WORKAROUND_GCC_96922
     //!\endcond
     explicit affine_cell_proxy(affine_cell_proxy<other_tuple_t> && other) :
         tuple_t{static_cast<other_tuple_t &&>(std::move(other))}
@@ -586,16 +614,12 @@ struct basic_common_reference<tuple1_t,
 
 //!\cond
 template <typename tuple_t>
-//!\cond
     requires (seqan3::detail::affine_score_cell<tuple_t> || seqan3::detail::affine_score_and_trace_cell<tuple_t>)
-//!\endcond
 struct tuple_size<seqan3::detail::affine_cell_proxy<tuple_t>> : public tuple_size<tuple_t>
 {};
 
 template <size_t index, typename tuple_t>
-//!\cond
     requires (seqan3::detail::affine_score_cell<tuple_t> || seqan3::detail::affine_score_and_trace_cell<tuple_t>)
-//!\endcond
 struct tuple_element<index, seqan3::detail::affine_cell_proxy<tuple_t>> : public tuple_element<index, tuple_t>
 {};
 //!\endcond

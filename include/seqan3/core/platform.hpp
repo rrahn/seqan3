@@ -276,6 +276,15 @@
 #   endif
 #endif
 
+//!\brief See https://gcc.gnu.org/bugzilla/show_bug.cgi?id=96922
+#ifndef SEQAN3_WORKAROUND_GCC_96922 // not yet fixed, this is a defect within the standard lib
+// remind us of this issue once gcc-11 was released.
+#   if defined(__GNUC__) && ((__GNUC__ < 10) || (__GNUC__ == 10 && __GNUC_MINOR__ < 3))
+#       define SEQAN3_WORKAROUND_GCC_96922 1
+#   else
+#       define SEQAN3_WORKAROUND_GCC_96922 0
+#   endif
+#endif
 // ============================================================================
 //  Backmatter
 // ============================================================================
