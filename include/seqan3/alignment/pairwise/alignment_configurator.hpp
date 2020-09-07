@@ -544,14 +544,14 @@ private:
         // Temporarily we will use the new and the old alignment implementation in order to
         // refactor step-by-step to the new implementation. The new implementation will be tested in
         // macrobenchmarks to show that it maintains a high performance.
-
+        constexpr bool more_than_score = traits_t::compute_end_positions ||
+                                         traits_t::compute_begin_positions ||
+                                         traits_t::compute_sequence_alignment;
         // Use old alignment implementation if...
-        if constexpr (traits_t::is_local ||                                                                                // it is a local alignment,
-                      traits_t::is_debug ||                                                                                // it runs in debug mode,
-                      traits_t::compute_sequence_alignment ||                                                              // it computes more than the end position.
-                     (traits_t::is_banded && (traits_t::compute_end_positions || traits_t::compute_begin_positions)) ||    // banded
-                     (traits_t::is_vectorised && traits_t::is_banded) ||                                                   // it is vectorised and banded,
-                     (traits_t::is_vectorised && (traits_t::compute_end_positions || traits_t::compute_begin_positions)))  // simd and more than the score.
+        if constexpr (traits_t::is_local ||                               // it is a local alignment,
+                     (traits_t::is_banded && more_than_score) ||          // banded
+                     (traits_t::is_vectorised && traits_t::is_banded) ||  // it is vectorised and banded,
+                     (traits_t::is_vectorised && more_than_score))        // simd and more than the score.
         {
             using matrix_policy_t = typename select_matrix_policy<traits_t>::type;
             using gap_policy_t = typename select_gap_policy<traits_t>::type;

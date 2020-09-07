@@ -44,8 +44,31 @@ protected:
     using traits_type = alignment_configuration_traits<alignment_configuration_t>;
     //!\brief The alignment result type.
     using result_type = typename traits_type::alignment_result_type;
+    //!\brief The debug score type.
+    using debug_score_type = std::optional<typename traits_type::score_type>;
+    //!\brief The debug trace type.
+    using debug_trace_type = std::optional<typename traits_type::trace_type>;
+    //!\brief The type of the debug score matrix.
+    using debug_score_matrix_t =
+        std::conditional_t<traits_type::is_debug,
+                           two_dimensional_matrix<debug_score_type,
+                                                  std::allocator<debug_score_type>,
+                                                  matrix_major_order::column>,
+                           empty_type>;
+    //!\brief The type of the debug trace matrix.
+    using debug_trace_matrix_t =
+        std::conditional_t<traits_type::is_debug && traits_type::compute_sequence_alignment,
+                           two_dimensional_matrix<debug_trace_type,
+                                                  std::allocator<debug_trace_type>,
+                                                  matrix_major_order::column>,
+                           empty_type>;
 
     static_assert(!std::same_as<result_type, empty_type>, "The alignment result type was not configured.");
+
+    //!\brief The debug score matrix.
+    debug_score_matrix_t debug_score_matrix{};
+    //!\brief The debug trace matrix.
+    debug_trace_matrix_t debug_trace_matrix{};
 
     /*!\name Constructors, destructor and assignment
      * \{
@@ -139,9 +162,92 @@ protected:
                 result.data.begin_positions.first = aligned_sequence_result.first_sequence_slice_positions.first;
                 result.data.begin_positions.second = aligned_sequence_result.second_sequence_slice_positions.first;
             }
+
+            if constexpr (traits_type::compute_sequence_alignment)
+                result.data.alignment = std::move(aligned_sequence_result.alignment);
+        }
+
+        // In case we run in debug mode, we need to store the score and possibly trace matrix.
+        if constexpr (traits_type::is_debug)
+        {
+            result.data.score_debug_matrix = debug_score_matrix;
+
+            if (traits_type::compute_sequence_alignment)
+                result.data.trace_debug_matrix = debug_trace_matrix;
         }
 
         callback(std::move(result));
+    }
+
+    /*!\brief Initialises the local debug matrices.
+     *
+     * \param[in] sequence1_size The size of the first sequence.
+     * \param[in] sequence2_size The size of the second sequence.
+     *
+     * \details
+     *
+     * Resizes the debug score and if requested the trace matrix to the given matrix dimensions.
+     *
+     * ### Exception
+     *
+     * Might throw std::bad_alloc if the requested matrix size exceeds the available memory.
+     */
+    void initialise_debug_matrices(size_t const sequence1_size, size_t const sequence2_size)
+    {
+        assert(sequence1_size < static_cast<uint64_t>(std::numeric_limits<int64_t>::max()));
+        assert(sequence2_size < static_cast<uint64_t>(std::numeric_limits<int64_t>::max()));
+
+        size_t const column_count = sequence1_size + 1;
+        size_t const row_count = sequence2_size + 1;
+
+        debug_score_matrix.resize(number_rows{row_count}, number_cols{column_count});
+
+        if constexpr (traits_type::compute_sequence_alignment)
+            debug_trace_matrix.resize(number_rows{row_count}, number_cols{column_count});
+    }
+
+    /*!\brief Log the current alignment column.
+     * \tparam coordinate_column_t The type of the coordinate matrix column; must model std::ranges::input_range and
+     *                             seqan3::detail::matrix_offset is std::constructible_from the range reference type.
+     * \tparam alignment_column_t The type of the alignment matrix column; must model std::ranges::input_range and
+     *                            the range reference type must model seqan3::detail::affine_cell_proxy_instance.
+     *
+     * param[in] coordinate_column The current column over the coordinate matrix.
+     * param[in] alignment_column The current column over the alignment matrix.
+     *
+     * \details
+     *
+     * Logs the current alignment column in the locally stored debug matrices for the score and trace matrix.
+     * The coordinate column is used to store the column at the correct offset. This is needed when logging
+     * the banded matrix, where the column offset can be different. The trace matrix is only logged if the
+     * sequence alignment shall be computed.
+     */
+    template <std::ranges::input_range coordinate_column_t, std::ranges::input_range alignment_column_t>
+    //!\cond
+        requires (std::constructible_from<matrix_offset, std::ranges::range_reference_t<coordinate_column_t>> &&
+                  affine_cell_proxy_instance<std::ranges::range_reference_t<alignment_column_t>>)
+    //!\endcond
+    void log_alignment_matrix_column(coordinate_column_t && coordinate_column,
+                                     alignment_column_t && alignment_column)
+    {
+        matrix_offset column_coordinate_begin{*coordinate_column.begin()};
+
+        assert(static_cast<size_t>(column_coordinate_begin.col) < debug_score_matrix.cols());
+        assert(static_cast<size_t>(column_coordinate_begin.row) < debug_score_matrix.rows());
+
+        // We have two algorithms:
+        // First copy the alignment
+        std::ranges::copy(alignment_column | std::views::transform([] (auto && cell) { return cell.best_score(); }),
+                          debug_score_matrix.begin() + column_coordinate_begin);
+
+        if constexpr (traits_type::compute_sequence_alignment)
+        {
+            assert(static_cast<size_t>(column_coordinate_begin.col) < debug_trace_matrix.cols());
+            assert(static_cast<size_t>(column_coordinate_begin.row) < debug_trace_matrix.rows());
+
+            std::ranges::copy(alignment_column | std::views::transform([] (auto && cell) { return cell.best_trace(); }),
+                              debug_trace_matrix.begin() + column_coordinate_begin);
+        }
     }
 };
 } // namespace seqan3::detail
