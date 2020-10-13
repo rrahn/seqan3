@@ -16,9 +16,9 @@
 
 #include <seqan3/alignment/matrix/detail/two_dimensional_matrix.hpp>
 #include <seqan3/alignment/matrix/matrix_concept.hpp>
+#include <seqan3/core/configuration/configuration.hpp>
 #include <seqan3/core/detail/empty_type.hpp>
-#include <seqan3/core/algorithm/configuration.hpp>
-#include <seqan3/core/type_traits/template_inspection.hpp>
+#include <seqan3/core/detail/template_inspection.hpp>
 
 namespace seqan3::detail
 {
