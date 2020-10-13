@@ -48,8 +48,10 @@ protected:
     using traits_type = alignment_configuration_traits<alignment_configuration_t>;
     //!\brief The configured score type.
     using score_type = typename traits_type::score_type;
+    //!\brief The internal tuple storing the scores of an affine cell.
+    using affine_score_tuple_t = std::tuple<score_type, score_type, score_type>;
     //!\brief The affine cell type returned by the functions.
-    using affine_cell_type = affine_cell_proxy<std::tuple<score_type, score_type, score_type>>;
+    using affine_cell_type = affine_cell_proxy<affine_score_tuple_t>;
 
     //!\brief The score for a gap extension.
     score_type gap_extension_score{};
@@ -121,9 +123,6 @@ protected:
      * * \f$ M[i, j] = \max \{M[i - 1, j - 1] + \delta, H[i, j], V[i, j]\}\f$
      */
     template <typename affine_cell_t>
-    //!\cond
-        requires is_type_specialisation_of_v<affine_cell_t, affine_cell_proxy>
-    //!\endcond
     affine_cell_type compute_inner_cell(score_type diagonal_score,
                                         affine_cell_t previous_cell,
                                         score_type const sequence_score) const noexcept
@@ -160,7 +159,7 @@ protected:
     {
         return {score_type{},
                 first_row_is_free ? score_type{} : gap_open_score,
-                first_column_is_free ? score_type{} : gap_open_score};
+                first_column_is_free ? score_type{} : gap_open_score};;
     }
 
     /*!\brief Initialises a cell of the first alignment matrix column.
@@ -178,16 +177,13 @@ protected:
      * \f$H[i, 0] = V[i, 0] + g_o\f$ to prohibit extending a gap in the horizontal matrix from \f$H[i, 0]\f$.
      */
     template <typename affine_cell_t>
-    //!\cond
-        requires is_type_specialisation_of_v<affine_cell_t, affine_cell_proxy>
-    //!\endcond
     affine_cell_type initialise_first_column_cell(affine_cell_t previous_cell) const noexcept
     {
         score_type new_vertical = previous_cell.vertical_score() + gap_extension_score;
         return {previous_cell.vertical_score(),
                 previous_cell.vertical_score() + gap_open_score,
                 first_column_is_free ? previous_cell.vertical_score() : new_vertical};
-               }
+    }
 
     /*!\brief Initialises the first cell of a alignment matrix column.
      *
@@ -204,9 +200,6 @@ protected:
      * \f$V[0,j] = H[0, j] + g_o\f$ to prohibit extending a gap in the vertical matrix from \f$V[0, j]\f$.
      */
     template <typename affine_cell_t>
-    //!\cond
-        requires is_type_specialisation_of_v<affine_cell_t, affine_cell_proxy>
-    //!\endcond
     affine_cell_type initialise_first_row_cell(affine_cell_t previous_cell) const noexcept
     {
         score_type new_horizontal_score = previous_cell.horizontal_score() + gap_extension_score;
