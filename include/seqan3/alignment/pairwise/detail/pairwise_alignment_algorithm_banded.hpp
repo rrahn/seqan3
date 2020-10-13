@@ -103,7 +103,8 @@ public:
                            get<1>(sequence_pair),
                            alignment_matrix,
                            index_matrix);
-            this->make_result_and_invoke(std::forward<decltype(sequence_pair)>(sequence_pair),
+            this->make_result_and_invoke(*this,
+                                         std::forward<decltype(sequence_pair)>(sequence_pair),
                                          std::move(idx),
                                          this->optimal_score,
                                          this->optimal_coordinate,
