@@ -13,6 +13,7 @@
 #pragma once
 
 #include <seqan3/alignment/matrix/detail/aligned_sequence_builder.hpp>
+#include <seqan3/alignment/pairwise/detail/policy_alignment_algorithm_logger.hpp>
 #include <seqan3/alignment/pairwise/detail/type_traits.hpp>
 #include <seqan3/core/algorithm/configuration.hpp>
 #include <seqan3/core/detail/empty_type.hpp>
@@ -47,6 +48,7 @@ protected:
 
     static_assert(!std::same_as<result_type, empty_type>, "The alignment result type was not configured.");
 
+
     /*!\name Constructors, destructor and assignment
      * \{
      */
@@ -64,9 +66,55 @@ protected:
     {}
     //!\}
 
+
     /*!\brief Builds the seqan3::alignment_result based on the given alignment result type and then invokes the
      *        given callable with the result.
      *
+     * \tparam logger_specs_t A template parameter pack over the template types of the
+     *                        seqan3::detail::policy_alignment_algorithm_logger.
+     * \tparam params_t A template parameter pack over the remaining parameters needed to construct the alignment
+     *                  result.
+     *
+     * \param[in] logger The logger if applicable, otherwise the instance of the alignment algorithm.
+     * \param[in] params The remaining parameters to construct the alignment result with.
+     *
+     * \details
+     *
+     * This is a wrapper function to promote the logger functionality of the alignment algorithm. The
+     * seqan3::detail::policy_alignment_algorithm_logger is only available if the alignment was run in debug mode. In this case,
+     * the seqan3::detail::policy_alignment_algorithm_logger is another base class of the alignment algorithm. When calling this
+     * interface with the instance of the alignment algorithm, which is a derived class of the debug policy, then the
+     * algorithm will be implicitly converted to the debug logger base class. Accordingly, we can access the public
+     * members of the logger class inside of the result builder to store the logged alignment matrix.
+     * This solves the problem of accessing the state of a sibling policy without weakening the interface of the
+     * policies.
+     *
+     * If the debug mode was not enabled, another overload will be used, which does not promote the alignment matrix
+     * to the debug logger class, i.e. calling it without debug information is still valid.
+     */
+    template <typename ...logger_specs_t, typename ...params_t>
+    //!\cond
+        requires traits_type::is_debug
+    //!\endcond
+    void make_result_and_invoke(policy_alignment_algorithm_logger<logger_specs_t...> & logger, params_t && ...params)
+    {
+        make_result_and_invoke_impl(logger, std::forward<params_t>(params)...);
+    }
+
+    //!\overload
+    template <typename ...params_t>
+    //!\cond
+        requires (!traits_type::is_debug)
+    //!\endcond
+    void make_result_and_invoke(params_t && ...params)
+    {
+        make_result_and_invoke_impl(std::forward<params_t>(params)...);
+    }
+
+    /*!\brief Builds the seqan3::alignment_result based on the given alignment result type and then invokes the
+     *        given callable with the result.
+     *
+     * \tparam logger_t The type the debug logger.
      * \tparam sequence_pair_t The type of the sequence pair.
      * \tparam id_t The type of the id.
      * \tparam score_t The type of the score.
@@ -74,6 +122,7 @@ protected:
      * \tparam alignment_matrix_t The type of the alignment matrix.
      * \tparam callback_t The type of the callback to invoke.
      *
+     * \param[in] logger The debug logger (only available when run in debug mode).
      * \param[in] sequence_pair The indexed sequence pair.
      * \param[in] id The associated id.
      * \param[in] score The best alignment score.
@@ -87,8 +136,12 @@ protected:
      * \ref seqan3_align_cfg_output_configurations "seqan3::align_cfg::output_*" configuration only the requested values
      * are stored. In some cases some additional work is done to generate the requested result. For example computing
      * the associated alignment from the traceback matrix.
+     *
+     * The first parameter is the logger and is only available if the alignment was run in debug mode. It stores the
+     * debug score and, if applicable, the debug trace matrix, which are then stored in the created alignment result.
      */
-    template <typename sequence_pair_t,
+    template <typename logger_t,
+              typename sequence_pair_t,
               typename index_t,
               typename score_t,
               typename matrix_coordinate_t,
@@ -97,12 +150,13 @@ protected:
     //!\cond
         requires std::invocable<callback_t, result_type>
     //!\endcond
-    void make_result_and_invoke([[maybe_unused]] sequence_pair_t && sequence_pair,
-                                [[maybe_unused]] index_t && id,
-                                [[maybe_unused]] score_t score,
-                                [[maybe_unused]] matrix_coordinate_t end_positions,
-                                [[maybe_unused]] alignment_matrix_t const & alignment_matrix,
-                                callback_t && callback)
+    void make_result_and_invoke_impl([[maybe_unused]] logger_t && logger,
+                                     [[maybe_unused]] sequence_pair_t && sequence_pair,
+                                     [[maybe_unused]] index_t && id,
+                                     [[maybe_unused]] score_t score,
+                                     [[maybe_unused]] matrix_coordinate_t end_positions,
+                                     [[maybe_unused]] alignment_matrix_t const & alignment_matrix,
+                                     callback_t && callback)
     {
         using std::get;
         using invalid_t = std::nullopt_t *;
@@ -141,9 +195,24 @@ protected:
                 result.data.begin_positions.first = aligned_sequence_result.first_sequence_slice_positions.first;
                 result.data.begin_positions.second = aligned_sequence_result.second_sequence_slice_positions.first;
             }
+
+            if constexpr (traits_type::compute_sequence_alignment)
+                result.data.alignment = std::move(aligned_sequence_result.alignment);
+        }
+
+        // In case we run in debug mode, we need to store the score and possibly trace matrix.
+        if constexpr (traits_type::is_debug)
+        {
+            // static constexpr that logger is not a ignore type.
+            using std::swap;
+            swap(result.data.score_debug_matrix, logger.debug_score_matrix);
+
+            if (traits_type::compute_sequence_alignment)
+                swap(result.data.trace_debug_matrix, logger.debug_trace_matrix);
         }
 
         callback(std::move(result));
     }
+
 };
 } // namespace seqan3::detail

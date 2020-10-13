@@ -139,8 +139,12 @@ public:
 
             auto && [alignment_matrix, index_matrix] = this->acquire_matrices(sequence1_size, sequence2_size);
 
+            if constexpr (traits_type::is_debug)
+                this->initialise_debug_matrices(sequence1_size, sequence2_size);
+
             compute_matrix(get<0>(sequence_pair), get<1>(sequence_pair), alignment_matrix, index_matrix);
-            this->make_result_and_invoke(std::forward<decltype(sequence_pair)>(sequence_pair),
+            this->make_result_and_invoke(*this,
+                                         std::forward<decltype(sequence_pair)>(sequence_pair),
                                          std::move(idx),
                                          this->optimal_score,
                                          this->optimal_coordinate,
@@ -191,7 +195,8 @@ public:
                                      (this->padding_offsets[index] * this->scoring_scheme.padding_match_score());
             matrix_coordinate coordinate{row_index_type{size_t{this->optimal_coordinate.row[index]}},
                                          column_index_type{size_t{this->optimal_coordinate.col[index]}}};
-            this->make_result_and_invoke(std::forward<decltype(sequence_pair)>(sequence_pair),
+            this->make_result_and_invoke(*this,
+                                         std::forward<decltype(sequence_pair)>(sequence_pair),
                                          std::move(idx),
                                          std::move(score),
                                          std::move(coordinate),
@@ -352,6 +357,9 @@ protected:
         // ---------------------------------------------------------------------
 
         this->track_last_row_cell(*first_column_it, *cell_index_column_it);
+
+        if constexpr (traits_type::is_debug)
+            this->log_alignment_matrix_column(cell_index_column, alignment_column);
     }
 
     /*!\brief Initialise any column of the alignment matrix except the first one.
@@ -416,6 +424,9 @@ protected:
         // ---------------------------------------------------------------------
 
         this->track_last_row_cell(*alignment_column_it, *cell_index_column_it);
+
+        if constexpr (traits_type::is_debug)
+            this->log_alignment_matrix_column(cell_index_column, alignment_column);
     }
 };
 
