@@ -164,8 +164,42 @@ public:
     //!\endcond
     auto operator()(indexed_sequence_pairs_t && indexed_sequence_pairs, callback_t && callback)
     {
+        auto && [simd_seq1_collection, simd_seq2_collection] = preprocess_sequences(indexed_sequence_pairs);
+
+        auto && [alignment_matrix, index_matrix] = this->acquire_matrices(simd_seq1_collection.size(),
+                                                                          simd_seq2_collection.size());
+
+        compute_matrix(simd_seq1_collection, simd_seq2_collection, alignment_matrix, index_matrix);
+
+        postprocess_result(std::forward<indexed_sequence_pairs_t>(indexed_sequence_pairs),
+                           alignment_matrix,
+                           std::forward<callback_t>(callback));
+    }
+
+protected:
+    /*!\brief Preprocess to transform the sequence collections to simd vectors.
+     * \tparam indexed_sequence_pairs_t The type of the simd sequence pairs; must model
+     *                                  seqan3::detail::indexed_sequence_pair_range.
+     * \param[in] indexed_sequence_pairs A range over indexed sequence pairs to be aligned.
+     *
+     * \returns A tuple over the first and second sequence collection transformed to vectors of simd types.
+     *
+     * \details
+     *
+     * Decomposes the indexed sequence pairs into a collection for the first sequences and the second sequences.
+     * Each collection is converted to a vector over simd data types according to configurations set in the
+     * initialisation of the algorithm. Both vectors are thread local variables and are cached between
+     * invocations of the alignment algorithm in order to reduce memory allocations.
+     * Finally, a tuple with references to the thread local simd vectors is returned.
+     *
+     * \throws std::bad_alloc if the allocation of the simd vectors exceeds the available memory.
+     */
+    template <indexed_sequence_pair_range indexed_sequence_pairs_t>
+    auto preprocess_sequences(indexed_sequence_pairs_t && indexed_sequence_pairs)
+    {
+        static_assert(traits_type::is_vectorised, "This preprocess function is only callable in vectorisation mode.");
+
         using simd_collection_t = std::vector<score_type, aligned_allocator<score_type, alignof(score_type)>>;
-        using original_score_t = typename traits_type::original_score_type;
 
         // Extract the batch of sequences for the first and the second sequence.
         auto seq1_collection = indexed_sequence_pairs | views::get<0> | views::get<0>;
@@ -183,21 +217,50 @@ public:
         convert_batch_of_sequences_to_simd_vector(simd_seq2_collection,
                                                   seq2_collection,
                                                   this->scoring_scheme.padding_symbol);
+        return std::tie(simd_seq1_collection, simd_seq2_collection);
+    }
 
-        size_t const sequence1_size = std::ranges::distance(simd_seq1_collection);
-        size_t const sequence2_size = std::ranges::distance(simd_seq2_collection);
+    /*!\brief Postprocesses the result computation of the vectorised alignment.
+     * \tparam indexed_sequence_pairs_t The type of the simd sequence pairs; must model
+     *                                  seqan3::detail::indexed_sequence_pair_range.
+     * \tparam alignment_matrix_t The type of the alignment matrix created for the this alignment algorithm.
+     * \tparam callback_t The type of the callback to be invoked on every alignment result.
+     *
+     * \param[in] indexed_sequence_pairs A range over indexed sequence pairs to be aligned.
+     * \param[in] alignment_matrix The alignment matrix which is passed to the result builder.
+     * \param[in] callback The callback which is invoked on the constructed alignment result.
+     *
+     * \details
+     *
+     * Iterates over the sequence pairs and extracts the corresponding score and coordinate for each alignment pair in
+     * the collection. Note the process assumes that the size of the collection is less or equal than the size of the
+     * simd vector. No further runtime checks are enforced and if the pre-condition is not met the program will be left
+     * in the state of undefined behaviour.
+     * Subsequently, the alignment result builder is invoked with the respective values to construct the alignment
+     * result and invoke the callable with the new result.
+     */
+    template <indexed_sequence_pair_range indexed_sequence_pairs_t, typename alignment_matrix_t, typename callback_t>
+    void postprocess_result(indexed_sequence_pairs_t && indexed_sequence_pairs,
+                            alignment_matrix_t && alignment_matrix,
+                            callback_t && callback)
+    {
+        static_assert(traits_type::is_vectorised, "This preprocess function is only callable in vectorisation mode.");
+        // Check that the sequence collection and the length of the vector have indeed the same size.
+        assert(std::ranges::distance(indexed_sequence_pairs) <= simd::simd_traits<score_type>::length);
 
-        auto && [alignment_matrix, index_matrix] = this->acquire_matrices(sequence1_size, sequence2_size);
-
-        compute_matrix(simd_seq1_collection, simd_seq2_collection, alignment_matrix, index_matrix);
+        using original_score_t = typename traits_type::original_score_type;
 
         size_t index = 0;
         for (auto && [sequence_pair, idx] : indexed_sequence_pairs)
         {
+            original_score_t const padding_offset = this->padding_offsets[index];
             original_score_t score = this->optimal_score[index] -
-                                     (this->padding_offsets[index] * this->scoring_scheme.padding_match_score());
-            matrix_coordinate coordinate{row_index_type{size_t{this->optimal_coordinate.row[index]}},
-                                         column_index_type{size_t{this->optimal_coordinate.col[index]}}};
+                                     (padding_offset * this->scoring_scheme.padding_match_score());
+            matrix_coordinate coordinate{
+                row_index_type{static_cast<size_t>(this->optimal_coordinate.row[index] - padding_offset)},
+                column_index_type{static_cast<size_t>(this->optimal_coordinate.col[index] - padding_offset)}
+            };
+
             this->make_result_and_invoke(*this,
                                          std::forward<decltype(sequence_pair)>(sequence_pair),
                                          std::move(idx),
@@ -209,7 +272,6 @@ public:
         }
     }
 
-protected:
     /*!\brief Returns an invocable to build the aligned sequence if requested.
      *
      * \tparam alignment_matrix_t The type of the alignment matrix used to generate an aligned sequence builder for.
