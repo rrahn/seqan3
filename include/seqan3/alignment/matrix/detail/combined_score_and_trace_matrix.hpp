@@ -141,6 +141,18 @@ public:
     {
         return trace_matrix.trace_path(from_coordinate);
     }
+
+    /*!\brief Forwards the request to the contained trace matrix.
+     * \param[in] trace_begin A seqan3::matrix_coordinate pointing to the begin of the trace to follow.
+     *
+     * \returns An iterator pointing to the underlying trace matrix.
+     *
+     * \throws std::out_of_range if the specified coordinate is out of range.
+     */
+    auto matrix_iterator_at(matrix_coordinate const & trace_begin) const
+    {
+        return trace_matrix.matrix_iterator_at(trace_begin);
+    }
 };
 
 /*!\brief Combined score and trace matrix iterator for the pairwise sequence alignment.
