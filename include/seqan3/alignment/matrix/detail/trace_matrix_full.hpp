@@ -125,7 +125,7 @@ public:
      *        seqan3::detail::trace_directions::none.
      * \param[in] trace_begin A seqan3::matrix_coordinate pointing to the begin of the trace to follow.
      * \returns A std::ranges::subrange over the corresponding trace path.
-     * \throws std::invalid_argument if the specified coordinate is out of range.
+     * \throws std::out_of_range if the specified coordinate is out of range.
      */
     auto trace_path(matrix_coordinate const & trace_begin) const
     {
@@ -133,10 +133,22 @@ public:
         using trace_iterator_t = trace_iterator<matrix_iter_t>;
         using path_t = std::ranges::subrange<trace_iterator_t, std::default_sentinel_t>;
 
-        if (trace_begin.row >= row_count || trace_begin.col >= column_count)
-            throw std::invalid_argument{"The given coordinate exceeds the matrix in vertical or horizontal direction."};
+        return path_t{trace_iterator_t{matrix_iterator_at(trace_begin)}, std::default_sentinel};
+    }
 
-        return path_t{trace_iterator_t{complete_matrix.begin() + matrix_offset{trace_begin}}, std::default_sentinel};
+    /*!\brief Returns an iterator pointing to the underlying trace matrix at the given matrix coordinate.
+     * \param[in] trace_begin A seqan3::matrix_coordinate pointing to the begin of the trace to follow.
+     * \returns An iterator pointing to the underlying trace matrix.
+     * \throws std::out_of_range if the specified coordinate is out of range.
+     */
+    auto matrix_iterator_at(matrix_coordinate const & trace_begin) const
+    {
+        using matrix_iter_t = std::ranges::iterator_t<matrix_t const>;
+
+        if (trace_begin.row >= row_count || trace_begin.col >= column_count)
+            throw std::out_of_range{"The given coordinate exceeds the matrix in vertical or horizontal direction."};
+
+        return matrix_iter_t{complete_matrix.begin() + matrix_offset{trace_begin}};
     }
 
     /*!\name Iterators
