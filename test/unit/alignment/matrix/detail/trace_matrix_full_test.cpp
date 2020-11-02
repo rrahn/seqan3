@@ -10,6 +10,7 @@
 #include <string>
 #include <vector>
 
+#include <seqan3/alignment/matrix/detail/trace_iterator.hpp>
 #include <seqan3/alignment/matrix/detail/trace_matrix_full.hpp>
 
 #include "../../../range/iterator_test_template.hpp"
@@ -103,8 +104,14 @@ TEST(trace_matrix_full_test, trace_path)
     EXPECT_TRUE(++trace_cell_it == trace_column.end());
     EXPECT_TRUE(++trace_column_it == matrix.end());
 
-    auto trace_path = matrix.trace_path(seqan3::detail::matrix_coordinate{seqan3::detail::row_index_type{2u},
-                                                                          seqan3::detail::column_index_type{3u}});
+    auto matrix_iter = matrix.matrix_iterator_at(
+            seqan3::detail::matrix_coordinate{seqan3::detail::row_index_type{2u},
+                                              seqan3::detail::column_index_type{3u}});
+
+    using trace_iterator_t = seqan3::detail::trace_iterator<decltype(matrix_iter)>;
+    using path_t = std::ranges::subrange<trace_iterator_t, std::default_sentinel_t>;
+
+    path_t trace_path{trace_iterator_t{matrix_iter}, std::default_sentinel};
 
     auto trace_path_it = trace_path.begin();
     EXPECT_EQ(*trace_path_it, trace_t::left);
@@ -120,10 +127,10 @@ TEST(trace_matrix_full_test, invalid_trace_path_coordinate)
     matrix_t matrix{};
     matrix.resize(seqan3::detail::column_index_type<size_t>{4}, seqan3::detail::row_index_type<size_t>{3});
 
-    EXPECT_THROW((matrix.trace_path(seqan3::detail::matrix_coordinate{seqan3::detail::row_index_type{3u},
-                                                                     seqan3::detail::column_index_type{3u}})),
-                 std::invalid_argument);
-    EXPECT_THROW((matrix.trace_path(seqan3::detail::matrix_coordinate{seqan3::detail::row_index_type{2u},
-                                                                     seqan3::detail::column_index_type{4u}})),
-                 std::invalid_argument);
+    EXPECT_THROW((matrix.matrix_iterator_at(seqan3::detail::matrix_coordinate{seqan3::detail::row_index_type{3u},
+                                                                              seqan3::detail::column_index_type{3u}})),
+                 std::out_of_range);
+    EXPECT_THROW((matrix.matrix_iterator_at(seqan3::detail::matrix_coordinate{seqan3::detail::row_index_type{2u},
+                                                                              seqan3::detail::column_index_type{4u}})),
+                 std::out_of_range);
 }
