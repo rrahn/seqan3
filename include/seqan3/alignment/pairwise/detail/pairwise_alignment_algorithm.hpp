@@ -15,6 +15,9 @@
 #include <seqan3/std/concepts>
 #include <seqan3/std/ranges>
 
+#include <seqan3/alignment/matrix/detail/aligned_sequence_builder.hpp>
+#include <seqan3/alignment/matrix/detail/trace_iterator_banded.hpp>
+#include <seqan3/alignment/matrix/detail/trace_iterator.hpp>
 #include <seqan3/alignment/pairwise/detail/type_traits.hpp>
 #include <seqan3/core/detail/empty_type.hpp>
 #include <seqan3/core/simd/view_to_simd.hpp>
@@ -148,7 +151,7 @@ public:
                                          std::move(idx),
                                          this->optimal_score,
                                          this->optimal_coordinate,
-                                         alignment_matrix,
+                                         alignment_builder(alignment_matrix),
                                          callback);
         }
     }
@@ -200,13 +203,96 @@ public:
                                          std::move(idx),
                                          std::move(score),
                                          std::move(coordinate),
-                                         alignment_matrix,
+                                         alignment_builder(alignment_matrix),
                                          callback);
             ++index;
         }
     }
 
 protected:
+    /*!\brief Returns an invocable to build the aligned sequence if requested.
+     *
+     * \tparam alignment_matrix_t The type of the alignment matrix used to generate an aligned sequence builder for.
+     *
+     * \param[in] alignment_matrix The alignment matrix.
+     *
+     * \returns Either an invocable around a seqan3::detail::aligned_sequence_builder.
+     *
+     * \details
+     *
+     * This function returns an invocable wrapping the call to the seqan3::detail::aligned_sequence_builder.
+     * The returned invocable is used by the seqan3::detail::policy_alignment_result_builder to compute the begin
+     * positions or the aligned sequences if requested by the alignment configuration.
+     * The signature of the returned invocable looks like the following:
+     *
+     * ```cpp
+     * fn(auto && sequence1, auto && sequence2, auto coordinate)
+     * ```
+     * The first two arguments are the sequences to build the aligned sequences for. The third parameter is the
+     * coordinate pointing to the begin of the trace to follow, which is associated with the computed alignment optimum.
+     *
+     * ### Complexity
+     *
+     * Constant.
+     *
+     * Calling the returned invocable is linear in the length of the generated trace: \f$ O(n+m) \f$, with
+     * \f$ n,m \f$ being the size of the first, respectively second sequence.
+     *
+     * ### Exception
+     *
+     * The returned invocable might throw the following exceptions:
+     * * std::out_of_range error, if the given coordinate exceeds the dimensions of the underlying trace matrix.
+     * * seqan3::invalid_alignment_configuration, if the invocable is called when the alignment was configured without
+     *   computing additional trace information.
+     */
+    template <typename alignment_matrix_t>
+    auto alignment_builder([[maybe_unused]] alignment_matrix_t const & alignment_matrix)
+    {
+        // Return a callable that can be invoked by the sequence builder.
+        return [&] (auto && sequence1, auto && sequence2, auto coordinate)
+        {
+            // clip upper_diagonal
+            int32_t upper_diagonal = std::clamp<int32_t>(this->upper_diagonal, 0, std::ranges::distance(sequence1));
+
+            // If banded alignment, the row coordinate is mapped from the global matrix coordinate to the
+            // internally defined one.
+            if constexpr (traits_type::is_banded)
+            {
+                int32_t column_coordinate = static_cast<int32_t>(coordinate.col);
+                coordinate.row -= (column_coordinate > upper_diagonal) * (column_coordinate - upper_diagonal);
+            }
+
+            if constexpr (traits_type::requires_trace_information)
+            {
+                // Get the matrix iterator at the specified alignment coordinate.
+                auto trace_matrix_iter = alignment_matrix.matrix_iterator_at(coordinate);
+
+                using matrix_iter_t = decltype(trace_matrix_iter);
+                using trace_iterator_t = std::conditional_t<traits_type::is_banded,
+                                                            trace_iterator_banded<matrix_iter_t>,
+                                                            trace_iterator<matrix_iter_t>>;
+                using path_t = std::ranges::subrange<trace_iterator_t, std::default_sentinel_t>;
+
+                // Create the builder and return the generated alignment.
+                aligned_sequence_builder builder{std::forward<decltype(sequence1)>(sequence1),
+                                                 std::forward<decltype(sequence2)>(sequence2)};
+
+                // TODO: Make this the default iterator without differentiating between band and non-band.
+                if constexpr (traits_type::is_banded)
+                    return builder(path_t{trace_iterator_t{trace_matrix_iter, column_index_type{upper_diagonal}, false},
+                                          std::default_sentinel});
+                else
+                    return builder(path_t{trace_iterator_t{trace_matrix_iter}, std::default_sentinel});
+            }
+            else
+            {
+                throw seqan3::invalid_alignment_configuration{"You are trying to invoke the aligned sequence builder, "
+                                                              "but the selected configuration disables the computation "
+                                                              "of the trace."};
+            }
+        };
+    }
+
     /*!\brief Converts a batch of sequences to a sequence of simd vectors.
      * \tparam simd_sequence_t The type of the simd sequence; must model std::ranges::output_range for the `score_type`.
      * \tparam sequence_collection_t The type of the collection containing the sequences; must model
