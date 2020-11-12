@@ -498,9 +498,8 @@ private:
                                          traits_t::compute_begin_positions ||
                                          traits_t::compute_sequence_alignment;
         // Use old alignment implementation if...
-        if constexpr (traits_t::is_local ||                                                            // it is a local alignment,
-                     (traits_t::is_banded && (more_than_score || traits_t::compute_end_positions)) ||  // banded
-                     (traits_t::is_vectorised && more_than_score))                                     // simd and more than the score.
+        if constexpr (traits_t::is_local ||                         // it is a local alignment,
+                     (traits_t::is_vectorised && more_than_score))  // simd and more than the score.
         {
             using matrix_policy_t = typename select_matrix_policy<traits_t>::type;
             using gap_policy_t = typename select_gap_policy<traits_t>::type;
