@@ -75,14 +75,14 @@ static auto dna4_01 = []()
         {
         //   e  ,A  ,A  ,C  ,C  ,G  ,G  ,T  ,T  ,A  ,A  ,C  ,C  ,G  ,G  ,T  ,T  ,
         /*e*/N  ,L  ,l  ,l  ,l  ,l  ,l  ,l  ,l  ,INF,INF,INF,INF,INF,INF,INF,INF,
-        /*A*/U  ,DUL,DUL,l  ,l  ,l  ,l  ,l  ,l  ,D  ,INF,INF,INF,INF,INF,INF,INF,
-        /*C*/u  ,UL ,DUL,DUL,DUl,DUl,DUl,DUl,DUl,DUl,D  ,INF,INF,INF,INF,INF,INF,
+        /*A*/U  ,DUL,DUL,l  ,l  ,l  ,l  ,l  ,l  ,Dl ,INF,INF,INF,INF,INF,INF,INF,
+        /*C*/u  ,UL ,DUL,DUL,DUl,DUl,DUl,DUl,DUl,DUl,Dl ,INF,INF,INF,INF,INF,INF,
         /*G*/u  ,uL ,DUL,DUl,DUL,Dul,DuL,l  ,l  ,l  ,l  ,l  ,INF,INF,INF,INF,INF,
-        /*T*/INF,u  ,DuL,ul ,Dul,UL ,DUL,DUL,DUl,DUl,DUl,DUl,D  ,INF,INF,INF,INF,
+        /*T*/INF,u  ,DuL,ul ,Dul,UL ,DUL,DUL,DUl,DUl,DUl,DUl,Dl ,INF,INF,INF,INF,
         /*A*/INF,INF,Du ,uL ,ul ,ul ,DUl,DUl,DUl,Dul,DuL,l  ,l  ,l  ,INF,INF,INF,
         /*C*/INF,INF,INF,Du ,DuL,ul ,l  ,l  ,Dul,Ul ,DUl,DUl,DUl,l  ,l  ,INF,INF,
         /*G*/INF,INF,INF,INF,Du ,DuL,Dul,Dul,Dul,ul ,DUl,DUl,DUl,Dul,DUL,l  ,INF,
-        /*T*/INF,INF,INF,INF,INF,Du ,DuL,Dul,DuL,ul ,l  ,l  ,Dul,Ul ,DUl,DUl,D  ,
+        /*T*/INF,INF,INF,INF,INF,Du ,DuL,Dul,DuL,ul ,l  ,l  ,Dul,Ul ,DUl,DUl,Dl ,
         /*A*/INF,INF,INF,INF,INF,INF,Du ,UL ,DuL,DuL,Dul,Dul,Dul,ul ,DUl,DUl,DUl
         }
     };
@@ -132,15 +132,15 @@ static auto dna4_same_sequence_upper_diagonal_0 = []()
         {
         //   e  ,A  ,C  ,G  ,T  ,A  ,C  ,G  ,T  ,A  ,
         /*e*/N  ,INF,INF,INF,INF,INF,INF,INF,INF,INF,
-        /*A*/U  ,D  ,INF,INF,INF,INF,INF,INF,INF,INF,
-        /*C*/u  ,UL ,D  ,INF,INF,INF,INF,INF,INF,INF,
-        /*G*/u  ,uL ,UL ,D  ,INF,INF,INF,INF,INF,INF,
-        /*T*/INF,u  ,uL ,UL ,D  ,INF,INF,INF,INF,INF,
-        /*A*/INF,INF,u  ,uL ,UL ,D  ,INF,INF,INF,INF,
-        /*C*/INF,INF,INF,u  ,uL ,UL ,D  ,INF,INF,INF,
-        /*G*/INF,INF,INF,INF,u  ,uL ,UL ,D  ,INF,INF,
-        /*T*/INF,INF,INF,INF,INF,u  ,uL ,UL ,D  ,INF,
-        /*A*/INF,INF,INF,INF,INF,INF,u  ,uL ,UL ,D
+        /*A*/U  ,DL ,INF,INF,INF,INF,INF,INF,INF,INF,
+        /*C*/u  ,UL ,DL ,INF,INF,INF,INF,INF,INF,INF,
+        /*G*/u  ,uL ,UL ,DL ,INF,INF,INF,INF,INF,INF,
+        /*T*/INF,u  ,uL ,UL ,DL ,INF,INF,INF,INF,INF,
+        /*A*/INF,INF,u  ,uL ,UL ,DL ,INF,INF,INF,INF,
+        /*C*/INF,INF,INF,u  ,uL ,UL ,DL ,INF,INF,INF,
+        /*G*/INF,INF,INF,INF,u  ,uL ,UL ,DL ,INF,INF,
+        /*T*/INF,INF,INF,INF,INF,u  ,uL ,UL ,DL ,INF,
+        /*A*/INF,INF,INF,INF,INF,INF,u  ,uL ,UL ,DL
         }
     };
 }();
@@ -189,7 +189,7 @@ static auto dna4_same_sequence_lower_diagonal_0 = []()
         {
         //   e  ,A  ,C  ,G  ,T  ,A  ,C  ,G  ,T  ,A  ,
         /*e*/N  ,L  ,l  ,l  ,l  ,l  ,l  ,l  ,l  ,INF,
-        /*A*/INF,DU ,L  ,l  ,l  ,DUl,l  ,l  ,l  ,D  ,
+        /*A*/INF,DU ,L  ,l  ,l  ,DUl,l  ,l  ,l  ,Dl ,
         /*C*/INF,INF,DU ,L  ,l  ,l  ,DUl,l  ,l  ,l  ,
         /*G*/INF,INF,INF,DU ,L  ,l  ,l  ,DUl,l  ,l  ,
         /*T*/INF,INF,INF,INF,DU ,L  ,l  ,l  ,DUl,l  ,
@@ -247,13 +247,13 @@ static auto dna4_small_band = []()
         //   e  ,A  ,T  ,C  ,G  ,A  ,C  ,G  ,A  ,T  ,A  ,
         /*e*/N  ,L  ,l  ,INF,INF,INF,INF,INF,INF,INF,INF,
         /*A*/U  ,DUL,L  ,l  ,INF,INF,INF,INF,INF,INF,INF,
-        /*C*/u  ,UL ,DUL,DUL,D  ,INF,INF,INF,INF,INF,INF,
+        /*C*/u  ,UL ,DUL,DUL,Dl ,INF,INF,INF,INF,INF,INF,
         /*G*/INF,u  ,DUL,DUl,DUL,L  ,INF,INF,INF,INF,INF,
         /*A*/INF,INF,Du ,uL ,Ul ,DUL,L  ,INF,INF,INF,INF,
         /*C*/INF,INF,INF,Du ,uL ,Ul ,DUL,L  ,INF,INF,INF,
-        /*T*/INF,INF,INF,INF,u  ,uL ,UL ,DUL,D  ,INF,INF,
+        /*T*/INF,INF,INF,INF,u  ,uL ,UL ,DUL,DL ,INF,INF,
         /*A*/INF,INF,INF,INF,INF,Du ,uL ,DUL,DUl,L  ,INF,
-        /*G*/INF,INF,INF,INF,INF,INF,u  ,DuL,UL ,DUl,D  ,
+        /*G*/INF,INF,INF,INF,INF,INF,u  ,DuL,UL ,DUl,DL ,
         /*C*/INF,INF,INF,INF,INF,INF,INF,Du ,DuL,DUL,DUl
         }
     };
