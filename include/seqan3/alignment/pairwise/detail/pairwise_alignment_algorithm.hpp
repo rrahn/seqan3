@@ -309,9 +309,9 @@ protected:
     }
 
     /*!\brief Initialise the first column of the alignment matrix.
-     * \tparam alignment_column_t The type of the alignment column; must model std::ranges::input_range.
-     * \tparam cell_index_column_t The type of the indexed column; must model std::ranges::input_range.
-     * \tparam sequence2_t The type of the second sequence; must model std::ranges::input_range.
+     * \tparam alignment_column_t The type of the alignment column; must model std::ranges::forward_range.
+     * \tparam cell_index_column_t The type of the indexed column; must model std::ranges::forward_range.
+     * \tparam sequence2_t The type of the second sequence; must model std::ranges::forward_range.
      *
      * \param[in] alignment_column The current alignment matrix column to compute.
      * \param[in] cell_index_column The current index matrix column to get the respective cell indices.
@@ -326,9 +326,9 @@ protected:
      * phase all remaining cells are computed. In the final phase the last cell is possibly evaluated for a new
      * alignment optimum.
      */
-    template <std::ranges::input_range alignment_column_t,
-              std::ranges::input_range cell_index_column_t,
-              std::ranges::input_range sequence2_t>
+    template <std::ranges::forward_range alignment_column_t,
+              std::ranges::forward_range cell_index_column_t,
+              std::ranges::forward_range sequence2_t>
     void initialise_column(alignment_column_t && alignment_column,
                            cell_index_column_t && cell_index_column,
                            sequence2_t && sequence2)
@@ -363,10 +363,10 @@ protected:
     }
 
     /*!\brief Initialise any column of the alignment matrix except the first one.
-     * \tparam alignment_column_t The type of the alignment column; must model std::ranges::input_range.
-     * \tparam cell_index_column_t The type of the indexed column; must model std::ranges::input_range.
+     * \tparam alignment_column_t The type of the alignment column; must model std::ranges::forward_range.
+     * \tparam cell_index_column_t The type of the indexed column; must model std::ranges::forward_range.
      * \tparam alphabet1_t The type of the current symbol of sequence1.
-     * \tparam sequence2_t The type of the second sequence; must model std::ranges::input_range.
+     * \tparam sequence2_t The type of the second sequence; must model std::ranges::forward_range.
      *
      * \param[in] alignment_column The current alignment matrix column to compute.
      * \param[in] cell_index_column The current index matrix column to get the respective cell indices.
@@ -380,10 +380,10 @@ protected:
      * phase the first cell of the column is computed and in the iteration phase all remaining cells are computed.
      * In the final phase the last cell is possibly evaluated for a new alignment optimum.
      */
-    template <std::ranges::input_range alignment_column_t,
-              std::ranges::input_range cell_index_column_t,
+    template <std::ranges::forward_range alignment_column_t,
+              std::ranges::forward_range cell_index_column_t,
               typename alphabet1_t,
-              std::ranges::input_range sequence2_t>
+              std::ranges::forward_range sequence2_t>
     //!\cond
         requires semialphabet<alphabet1_t> || simd_concept<alphabet1_t>
     //!\endcond
