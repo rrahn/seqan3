@@ -12,7 +12,6 @@
 
 #pragma once
 
-#include <seqan3/alignment/matrix/detail/aligned_sequence_builder.hpp>
 #include <seqan3/alignment/pairwise/detail/policy_alignment_algorithm_logger.hpp>
 #include <seqan3/alignment/pairwise/detail/type_traits.hpp>
 #include <seqan3/core/algorithm/configuration.hpp>
@@ -47,7 +46,6 @@ protected:
     using result_type = typename traits_type::alignment_result_type;
 
     static_assert(!std::same_as<result_type, empty_type>, "The alignment result type was not configured.");
-
 
     /*!\name Constructors, destructor and assignment
      * \{
@@ -119,7 +117,7 @@ protected:
      * \tparam id_t The type of the id.
      * \tparam score_t The type of the score.
      * \tparam matrix_coordinate_t The type of the matrix coordinate.
-     * \tparam alignment_matrix_t The type of the alignment matrix.
+     * \tparam aligned_sequence_builder_t The type of the aligned sequences builder.
      * \tparam callback_t The type of the callback to invoke.
      *
      * \param[in] logger The debug logger (only available when run in debug mode).
@@ -127,7 +125,7 @@ protected:
      * \param[in] id The associated id.
      * \param[in] score The best alignment score.
      * \param[in] end_positions The matrix coordinate of the best alignment score.
-     * \param[in] alignment_matrix The alignment matrix to obtain the trace back from.
+     * \param[in] aligned_sequence_builder The aligned sequence builder.
      * \param[in] callback The callback to invoke with the generated result.
      *
      * \details
@@ -145,7 +143,7 @@ protected:
               typename index_t,
               typename score_t,
               typename matrix_coordinate_t,
-              typename alignment_matrix_t,
+              typename aligned_sequence_builder_t,
               typename callback_t>
     //!\cond
         requires std::invocable<callback_t, result_type>
@@ -155,7 +153,7 @@ protected:
                                      [[maybe_unused]] index_t && id,
                                      [[maybe_unused]] score_t score,
                                      [[maybe_unused]] matrix_coordinate_t end_positions,
-                                     [[maybe_unused]] alignment_matrix_t const & alignment_matrix,
+                                     [[maybe_unused]] aligned_sequence_builder_t const & aligned_sequence_builder,
                                      callback_t && callback)
     {
         using std::get;
@@ -187,8 +185,9 @@ protected:
 
         if constexpr (traits_type::requires_trace_information)
         {
-            aligned_sequence_builder builder{get<0>(sequence_pair), get<1>(sequence_pair)};
-            auto aligned_sequence_result = builder(alignment_matrix.trace_path(end_positions));
+            auto aligned_sequence_result = aligned_sequence_builder(get<0>(sequence_pair),
+                                                                    get<1>(sequence_pair),
+                                                                    end_positions);
 
             if constexpr (traits_type::compute_begin_positions)
             {
