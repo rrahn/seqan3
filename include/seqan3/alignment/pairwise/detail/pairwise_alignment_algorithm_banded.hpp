@@ -295,9 +295,9 @@ protected:
 
     /*!\brief Computes a column of the band that does not start in the first row of the alignment matrix.
      * \tparam alignment_column_t The type of the alignment column; must model std::ranges::forward_range.
-     * \tparam cell_index_column_t The type of the indexed column; must model std::ranges::input_range.
+     * \tparam cell_index_column_t The type of the indexed column; must model std::ranges::forward_range.
      * \tparam alphabet1_t The type of the current symbol of sequence1.
-     * \tparam sequence2_t The type of the second sequence; must model std::ranges::input_range.
+     * \tparam sequence2_t The type of the second sequence; must model std::ranges::forward_range.
      *
      * \param[in] alignment_column The current alignment matrix column to compute.
      * \param[in] cell_index_column The current index matrix column to get the respective cell indices.
@@ -345,9 +345,9 @@ protected:
      * current iterator can be used to track the score of the cell.
      */
     template <std::ranges::forward_range alignment_column_t,
-              std::ranges::input_range cell_index_column_t,
+              std::ranges::forward_range cell_index_column_t,
               typename alphabet1_t,
-              std::ranges::input_range sequence2_t>
+              std::ranges::forward_range sequence2_t>
     void compute_band_column(alignment_column_t && alignment_column,
                              cell_index_column_t && cell_index_column,
                              alphabet1_t const & alphabet1,
