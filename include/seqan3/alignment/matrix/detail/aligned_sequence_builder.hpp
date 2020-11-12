@@ -192,6 +192,9 @@ public:
         std::tie(res.first_sequence_slice_positions.first, res.second_sequence_slice_positions.first) =
             std::pair<size_t, size_t>{trace_it.coordinate()};
 
+        assert(res.first_sequence_slice_positions.first <= res.first_sequence_slice_positions.second);
+        assert(res.second_sequence_slice_positions.first <= res.second_sequence_slice_positions.second);
+
         assign_unaligned(std::get<0>(res.alignment),
                          std::views::all(fst_rng) | views::slice(res.first_sequence_slice_positions.first,
                                                                  res.first_sequence_slice_positions.second));
