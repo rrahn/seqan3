@@ -88,6 +88,9 @@ public:
             size_t sequence1_size = std::ranges::distance(get<0>(sequence_pair));
             size_t const sequence2_size = std::ranges::distance(get<1>(sequence_pair));
 
+            if constexpr (traits_type::is_debug)
+                this->initialise_debug_matrices(sequence1_size, sequence2_size);
+
             auto && [alignment_matrix, index_matrix] = this->acquire_matrices(sequence1_size,
                                                                               sequence2_size,
                                                                               this->lowest_viable_score());
@@ -389,6 +392,10 @@ protected:
         // ---------------------------------------------------------------------
 
         this->track_last_row_cell(*current_alignment_column_it, *cell_index_column_it);
+
+        if constexpr (traits_type::is_debug)
+            this->log_alignment_matrix_column(cell_index_column, alignment_column
+                                                               | views::take(std::ranges::distance(sequence2)));
     }
 };
 
