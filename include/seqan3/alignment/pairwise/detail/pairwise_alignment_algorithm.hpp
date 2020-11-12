@@ -359,7 +359,8 @@ protected:
         this->track_last_row_cell(*first_column_it, *cell_index_column_it);
 
         if constexpr (traits_type::is_debug)
-            this->log_alignment_matrix_column(cell_index_column, alignment_column);
+            this->log_alignment_matrix_column(cell_index_column, alignment_column
+                                                               | views::take(std::ranges::distance(sequence2)+ 1));
     }
 
     /*!\brief Initialise any column of the alignment matrix except the first one.
@@ -426,7 +427,8 @@ protected:
         this->track_last_row_cell(*alignment_column_it, *cell_index_column_it);
 
         if constexpr (traits_type::is_debug)
-            this->log_alignment_matrix_column(cell_index_column, alignment_column);
+            this->log_alignment_matrix_column(cell_index_column, alignment_column
+                                                               | views::take(std::ranges::distance(sequence2) + 1));
     }
 };
 
