@@ -62,7 +62,7 @@ struct max_score_updater
                     score_t current_score,
                     coordinate_t current_coordinate) const noexcept
     {
-        bool const is_better_score = current_score >= optimal_score;
+        bool const is_better_score = current_score > optimal_score;
         optimal_score = (is_better_score) ? std::move(current_score) : optimal_score;
         optimal_coordinate = (is_better_score) ? std::move(current_coordinate) : optimal_coordinate;
     }
