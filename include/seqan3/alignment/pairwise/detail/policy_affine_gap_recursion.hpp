@@ -95,8 +95,8 @@ protected:
         gap_open_score = maybe_convert_to_simd(selected_gap_scheme.open_score) + gap_extension_score;
 
         auto method_global_config = config.get_or(align_cfg::method_global{});
-        first_row_is_free = method_global_config.free_end_gaps_sequence1_leading;
-        first_column_is_free = method_global_config.free_end_gaps_sequence2_leading;
+        first_row_is_free = method_global_config.free_end_gaps_sequence1_leading || traits_type::is_local;
+        first_column_is_free = method_global_config.free_end_gaps_sequence2_leading || traits_type::is_local;
     }
     //!\}
 
