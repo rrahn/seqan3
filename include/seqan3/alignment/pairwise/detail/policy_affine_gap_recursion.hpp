@@ -17,6 +17,7 @@
 
 #include <seqan3/alignment/configuration/align_config_gap_cost_affine.hpp>
 #include <seqan3/alignment/matrix/detail/affine_cell_proxy.hpp>
+#include <seqan3/alignment/matrix/trace_directions.hpp>
 #include <seqan3/alignment/pairwise/detail/type_traits.hpp>
 #include <seqan3/core/detail/template_inspection.hpp>
 #include <seqan3/core/simd/concept.hpp>
@@ -127,6 +128,8 @@ protected:
 
         diagonal_score = (diagonal_score < vertical_score) ? vertical_score : diagonal_score;
         diagonal_score = (diagonal_score < horizontal_score) ? horizontal_score : diagonal_score;
+
+        truncate_score_below_zero(diagonal_score);
 
         score_type tmp = diagonal_score + gap_open_score;
         vertical_score += gap_extension_score;
@@ -240,6 +243,31 @@ protected:
             return simd::fill<score_type>(std::forward<score_t>(score));
         else // Return unmodified.
             return std::forward<score_t>(score);
+    }
+
+    /*!\brief Sets the score to zero if it is negative in the local alignment.
+     *
+     * \tparam trace_t The type of the trace direction.
+     *
+     * \param[in] score The score to be updated; maybe unused.
+     * \param[in] trace The trace to be updated; maybe unused.
+     *
+     * \details
+     *
+     * If the local alignment is enabled the score is set to 0 if it was negative before.
+     * Optionally, the function can be called with an additional trace direction and sets it to
+     * seqan3::trace_directions::none accordingly. If the alignment does not compute a local alignment this function
+     * becomes a no-op and is likely to be optimised out by the compiler.
+     */
+    template <typename ...trace_t>
+    //!\cond
+        requires (std::same_as<trace_t, std::remove_cvref_t<trace_directions>> && ...)
+    //!\endcond
+    void truncate_score_below_zero([[maybe_unused]] score_type & score, [[maybe_unused]] trace_t & ...trace)
+        const noexcept
+    {
+        if constexpr (traits_type::is_local)
+            score = (score < score_type{}) ? ((trace = trace_directions::none), ..., score_type{}) : score;
     }
 };
 } // namespace seqan3::detail
