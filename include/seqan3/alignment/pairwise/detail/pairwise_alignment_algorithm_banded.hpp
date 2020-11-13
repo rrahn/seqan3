@@ -88,6 +88,9 @@ public:
             size_t sequence1_size = std::ranges::distance(get<0>(sequence_pair));
             size_t const sequence2_size = std::ranges::distance(get<1>(sequence_pair));
 
+            if constexpr (traits_type::is_debug)
+                this->initialise_debug_matrices(sequence1_size, sequence2_size);
+
             auto && [alignment_matrix, index_matrix] = this->acquire_matrices(sequence1_size,
                                                                               sequence2_size,
                                                                               this->lowest_viable_score());
@@ -108,7 +111,7 @@ public:
                                          std::move(idx),
                                          this->optimal_score,
                                          this->optimal_coordinate,
-                                         alignment_matrix,
+                                         this->alignment_builder(alignment_matrix),
                                          callback);
         }
     }
@@ -161,7 +164,7 @@ public:
                                          std::move(idx),
                                          std::move(score),
                                          std::move(coordinate),
-                                         alignment_matrix,
+                                         this->alignment_builder(alignment_matrix),
                                          callback);
             ++index;
         }
@@ -295,9 +298,9 @@ protected:
 
     /*!\brief Computes a column of the band that does not start in the first row of the alignment matrix.
      * \tparam alignment_column_t The type of the alignment column; must model std::ranges::forward_range.
-     * \tparam cell_index_column_t The type of the indexed column; must model std::ranges::input_range.
+     * \tparam cell_index_column_t The type of the indexed column; must model std::ranges::forward_range.
      * \tparam alphabet1_t The type of the current symbol of sequence1.
-     * \tparam sequence2_t The type of the second sequence; must model std::ranges::input_range.
+     * \tparam sequence2_t The type of the second sequence; must model std::ranges::forward_range.
      *
      * \param[in] alignment_column The current alignment matrix column to compute.
      * \param[in] cell_index_column The current index matrix column to get the respective cell indices.
@@ -345,9 +348,9 @@ protected:
      * current iterator can be used to track the score of the cell.
      */
     template <std::ranges::forward_range alignment_column_t,
-              std::ranges::input_range cell_index_column_t,
+              std::ranges::forward_range cell_index_column_t,
               typename alphabet1_t,
-              std::ranges::input_range sequence2_t>
+              std::ranges::forward_range sequence2_t>
     void compute_band_column(alignment_column_t && alignment_column,
                              cell_index_column_t && cell_index_column,
                              alphabet1_t const & alphabet1,
@@ -389,6 +392,10 @@ protected:
         // ---------------------------------------------------------------------
 
         this->track_last_row_cell(*current_alignment_column_it, *cell_index_column_it);
+
+        if constexpr (traits_type::is_debug)
+            this->log_alignment_matrix_column(cell_index_column, alignment_column
+                                                               | views::take(std::ranges::distance(sequence2)));
     }
 };
 
