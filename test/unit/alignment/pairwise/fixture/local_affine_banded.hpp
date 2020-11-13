@@ -77,13 +77,13 @@ static auto dna4_01 = []()
         /*A*/ N  ,DUL,DUL,N  ,N  ,N  ,N  ,INF,INF,INF,INF,INF,INF,INF,INF,INF,INF,INF,
         /*C*/ N  ,N  ,N  ,DUL,DUL,N  ,N  ,N  ,INF,INF,INF,INF,INF,INF,INF,INF,INF,INF,
         /*G*/ INF,N  ,N  ,N  ,DUL,DUL,DUL,N  ,N  ,INF,INF,INF,INF,INF,INF,INF,INF,INF,
-        /*T*/ INF,INF,N  ,N  ,N  ,N  ,DUL,DUL,DUL,D  ,INF,INF,INF,INF,INF,INF,INF,INF,
+        /*T*/ INF,INF,N  ,N  ,N  ,N  ,DUL,DUL,DUL,Dl ,INF,INF,INF,INF,INF,INF,INF,INF,
         /*C*/ INF,INF,INF,Du ,DuL,N  ,N  ,N  ,DUl,N  ,N  ,INF,INF,INF,INF,INF,INF,INF,
         /*T*/ INF,INF,INF,INF,N  ,N  ,N  ,DuL,DuL,DuL,N  ,N  ,INF,INF,INF,INF,INF,INF,
         /*A*/ INF,INF,INF,INF,INF,N  ,N  ,N  ,N  ,N  ,DUL,DUL,N  ,INF,INF,INF,INF,INF,
-        /*C*/ INF,INF,INF,INF,INF,INF,N  ,N  ,N  ,N  ,UL ,DUL,DUL,D  ,INF,INF,INF,INF,
-        /*G*/ INF,INF,INF,INF,INF,INF,INF,N  ,N  ,N  ,N  ,N  ,DUL,DUL,D  ,INF,INF,INF,
-        /*T*/ INF,INF,INF,INF,INF,INF,INF,INF,Du ,DuL,N  ,N  ,N  ,N  ,N  ,D  ,INF,INF,
+        /*C*/ INF,INF,INF,INF,INF,INF,N  ,N  ,N  ,N  ,UL ,DUL,DUL,DL ,INF,INF,INF,INF,
+        /*G*/ INF,INF,INF,INF,INF,INF,INF,N  ,N  ,N  ,N  ,N  ,DUL,DUL,DL ,INF,INF,INF,
+        /*T*/ INF,INF,INF,INF,INF,INF,INF,INF,Du ,DuL,N  ,N  ,N  ,N  ,N  ,DL ,INF,INF,
         /*A*/ INF,INF,INF,INF,INF,INF,INF,INF,INF,N  ,DuL,DuL,N  ,N  ,N  ,N  ,N  ,INF
         }
     };
@@ -135,9 +135,9 @@ static auto dna4_02 = []()
         //      e,  A,  C,  G,  T,  C,  T,  A,  C,  G,  T,  A
         /*e*/ N  ,N  ,N  ,N  ,N  ,N  ,INF,INF,INF,INF,INF,INF,
         /*A*/ N  ,DUL,N  ,N  ,N  ,N  ,N  ,INF,INF,INF,INF,INF,
-        /*A*/ N  ,DUL,N  ,N  ,N  ,N  ,N  ,D  ,INF,INF,INF,INF,
-        /*C*/ INF,N  ,DUL,N  ,N  ,DUl,N  ,N  ,D  ,INF,INF,INF,
-        /*C*/ INF,INF,DU ,DUL,N  ,DUl,N  ,N  ,DUl,D  ,INF,INF,
+        /*A*/ N  ,DUL,N  ,N  ,N  ,N  ,N  ,DL ,INF,INF,INF,INF,
+        /*C*/ INF,N  ,DUL,N  ,N  ,DUl,N  ,N  ,Dl ,INF,INF,INF,
+        /*C*/ INF,INF,DU ,DUL,N  ,DUl,N  ,N  ,DUl,DL ,INF,INF,
         /*G*/ INF,INF,INF,DU ,N  ,N  ,N  ,N  ,N  ,DUl,N  ,INF,
         /*G*/ INF,INF,INF,INF,DU ,N  ,N  ,N  ,N  ,DUL,DUL,N  ,
         /*T*/ INF,INF,INF,INF,INF,N  ,DUL,N  ,N  ,N  ,DUl,N  ,
@@ -303,7 +303,7 @@ static auto dna4_05 = []()
         /*C*/ N  ,N  ,N  ,N  ,N  ,INF,INF,INF,INF,INF,INF,INF,INF,INF,
         /*C*/ N  ,N  ,N  ,N  ,N  ,N  ,INF,INF,INF,INF,INF,INF,INF,INF,
         /*C*/ N  ,N  ,N  ,N  ,N  ,N  ,N  ,INF,INF,INF,INF,INF,INF,INF,
-        /*T*/ N  ,N  ,N  ,N  ,N  ,N  ,N  ,D  ,INF,INF,INF,INF,INF,INF,
+        /*T*/ N  ,N  ,N  ,N  ,N  ,N  ,N  ,DL ,INF,INF,INF,INF,INF,INF,
         /*A*/ N  ,DUL,DUL,DUL,DUL,DUL,DUL,N  ,N  ,INF,INF,INF,INF,INF,
         /*A*/ N  ,DUL,DUL,DUL,DUL,DUL,DUL,N  ,N  ,N  ,INF,INF,INF,INF,
         /*A*/ N  ,DUL,DUL,DUL,DUL,DUL,DUL,DuL,l  ,N  ,N  ,INF,INF,INF,
@@ -419,12 +419,12 @@ static auto rna5_01 = []()
         /*A*/ N  ,DUL,DUL,DUL,DUL,DUL,DUL,DUL,l  ,l  ,l  ,l  ,l  ,N  ,N  ,INF,INF,INF,INF,INF,INF,INF,INF,
         /*A*/ N  ,DUL,DUL,DUL,DUL,DUL,DUL,DUL,l  ,l  ,l  ,l  ,l  ,l  ,l  ,l  ,INF,INF,INF,INF,INF,INF,INF,
         /*A*/ N  ,DUL,DUL,DUL,DUL,DUL,DUL,DUL,l  ,l  ,l  ,l  ,l  ,l  ,l  ,l  ,l  ,INF,INF,INF,INF,INF,INF,
-        /*C*/ N  ,N  ,N  ,DUL,DUL,DUL,DUL,DUL,DUL,DUl,DUl,DUl,DUl,DUl,DUl,DUl,DUl,D  ,INF,INF,INF,INF,INF,
-        /*C*/ N  ,N  ,N  ,uL ,uL ,uL ,uL ,DUL,Dul,DuL,Dul,Dul,Dul,N  ,N  ,N  ,N  ,DUl,D  ,INF,INF,INF,INF,
-        /*C*/ N  ,N  ,N  ,N  ,uL ,uL ,uL ,DuL,DUl,Dul,DuL,N  ,N  ,N  ,N  ,N  ,N  ,Dul,DUL,D  ,INF,INF,INF,
-        /*C*/ N  ,N  ,N  ,N  ,uL ,uL ,uL ,DuL,Dul,DUl,Dul,N  ,N  ,N  ,N  ,N  ,N  ,Dul,DuL,DUL,D  ,INF,INF,
-        /*C*/ INF,N  ,N  ,N  ,uL ,uL ,uL ,DuL,Dul,N  ,N  ,N  ,N  ,N  ,N  ,N  ,N  ,DuL,DuL,DuL,DUL,D  ,INF,
-        /*C*/ INF,INF,N  ,N  ,uL ,uL ,uL ,DuL,Dul,N  ,N  ,N  ,N  ,N  ,N  ,N  ,N  ,DuL,DuL,DuL,DuL,DUL,D
+        /*C*/ N  ,N  ,N  ,DUL,DUL,DUL,DUL,DUL,DUL,DUl,DUl,DUl,DUl,DUl,DUl,DUl,DUl,Dl ,INF,INF,INF,INF,INF,
+        /*C*/ N  ,N  ,N  ,uL ,uL ,uL ,uL ,DUL,Dul,DuL,Dul,Dul,Dul,N  ,N  ,N  ,N  ,DUl,Dl ,INF,INF,INF,INF,
+        /*C*/ N  ,N  ,N  ,N  ,uL ,uL ,uL ,DuL,DUl,Dul,DuL,N  ,N  ,N  ,N  ,N  ,N  ,Dul,DUL,DL ,INF,INF,INF,
+        /*C*/ N  ,N  ,N  ,N  ,uL ,uL ,uL ,DuL,Dul,DUl,Dul,N  ,N  ,N  ,N  ,N  ,N  ,Dul,DuL,DUL,DL ,INF,INF,
+        /*C*/ INF,N  ,N  ,N  ,uL ,uL ,uL ,DuL,Dul,N  ,N  ,N  ,N  ,N  ,N  ,N  ,N  ,DuL,DuL,DuL,DUL,DL ,INF,
+        /*C*/ INF,INF,N  ,N  ,uL ,uL ,uL ,DuL,Dul,N  ,N  ,N  ,N  ,N  ,N  ,N  ,N  ,DuL,DuL,DuL,DuL,DUL,DL
         }
     };
 }();
