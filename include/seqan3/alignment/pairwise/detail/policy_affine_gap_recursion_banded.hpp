@@ -83,6 +83,9 @@ protected:
         diagonal_score += sequence_score;
         score_type horizontal_score = previous_cell.horizontal_score();
         diagonal_score = (diagonal_score < horizontal_score) ? horizontal_score : diagonal_score;
+
+        this->truncate_score_below_zero(diagonal_score);
+
         score_type from_optimal_score = diagonal_score + gap_open_score;
         horizontal_score += gap_extension_score;
         horizontal_score = (horizontal_score < from_optimal_score) ? from_optimal_score : horizontal_score;

@@ -82,6 +82,8 @@ protected:
                        ? (best_trace = previous_cell.horizontal_trace(), horizontal_score)
                        : (best_trace |= previous_cell.horizontal_trace(), diagonal_score);
 
+        this->truncate_score_below_zero(diagonal_score, best_trace);
+
         score_type tmp = diagonal_score + gap_open_score;
         vertical_score += gap_extension_score;
         horizontal_score += gap_extension_score;
