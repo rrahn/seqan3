@@ -282,5 +282,30 @@ protected:
             ((trace = cmp_mask ? maybe_convert_to_simd(trace_directions::none) : trace),...);
         }
     }
+
+    /*!\brief Sets the score to zero if it is negative in the local alignment.
+     *
+     * \tparam trace_t The type of the trace direction.
+     *
+     * \param[in] score The score to be updated; maybe unused.
+     * \param[in] trace The trace to be updated; maybe unused.
+     *
+     * \details
+     *
+     * If the local alignment is enabled the score is set to 0 if it was negative before.
+     * Optionally, the function can be called with an additional trace direction and sets it to
+     * seqan3::trace_directions::none accordingly. If the alignment does not compute a local alignment this function
+     * becomes a no-op and is likely to be optimised out by the compiler.
+     */
+    template <typename ...trace_t>
+    //!\cond
+        requires (std::same_as<trace_t, std::remove_cvref_t<trace_directions>> && ...)
+    //!\endcond
+    void truncate_score_below_zero([[maybe_unused]] score_type & score, [[maybe_unused]] trace_t & ...trace)
+        const noexcept
+    {
+        if constexpr (traits_type::is_local)
+            score = (score < score_type{}) ? ((trace = trace_directions::none), ..., score_type{}) : score;
+    }
 };
 } // namespace seqan3::detail

@@ -75,6 +75,8 @@ protected:
 
         this->truncate_score_below_zero(diagonal_score, best_trace);
 
+        this->truncate_score_below_zero(diagonal_score, best_trace);
+
         score_type from_optimal_score = diagonal_score + gap_open_score;
 
         horizontal_score += gap_extension_score;
