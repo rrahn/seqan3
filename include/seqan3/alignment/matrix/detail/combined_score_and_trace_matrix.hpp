@@ -129,19 +129,6 @@ public:
     sentinel end() const = delete;
     //!\}
 
-    /*!\brief Returns a trace path starting from the given coordinate and ending in the cell with
-     *        seqan3::detail::trace_directions::none.
-     * \param[in] from_coordinate A seqan3::matrix_coordinate pointing to the start of the trace to follow.
-     *
-     * \returns A std::ranges::subrange over the corresponding trace path.
-     *
-     * \throws std::invalid_argument if the specified coordinate is out of range.
-     */
-    auto trace_path(matrix_coordinate const & from_coordinate) const
-    {
-        return trace_matrix.trace_path(from_coordinate);
-    }
-
     /*!\brief Forwards the request to the contained trace matrix.
      * \param[in] trace_begin A seqan3::matrix_coordinate pointing to the begin of the trace to follow.
      *
