@@ -96,8 +96,9 @@ public:
                                                                               this->lowest_viable_score());
 
             // Initialise the cell updater with the dimensions of the regular matrix.
-            this->compare_and_set_optimum.set_target_indices(row_index_type{sequence2_size},
-                                                             column_index_type{sequence1_size});
+            if constexpr (!traits_type::is_local) // Only if not local alignment.
+                this->compare_and_set_optimum.set_target_indices(row_index_type{sequence2_size},
+                                                                 column_index_type{sequence1_size});
 
             // Shrink the first sequence if the band ends before its actual end.
             sequence1_size = std::min(sequence1_size, this->upper_diagonal + sequence2_size);
