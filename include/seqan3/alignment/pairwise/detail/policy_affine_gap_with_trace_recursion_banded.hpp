@@ -72,6 +72,8 @@ protected:
                        ? horizontal_score
                        : (best_trace |= trace_directions::diagonal, diagonal_score);
 
+        this->truncate_score_below_zero(diagonal_score, best_trace);
+
         score_type from_optimal_score = diagonal_score + gap_open_score;
         trace_directions next_horizontal_trace = trace_directions::left;
 
