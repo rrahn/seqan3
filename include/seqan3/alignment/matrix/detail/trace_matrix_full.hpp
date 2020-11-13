@@ -121,21 +121,6 @@ public:
         vertical_column = views::repeat_n(trace_t{}, this->row_count);
     }
 
-    /*!\brief Returns a trace path starting from the given coordinate and ending in the cell with
-     *        seqan3::detail::trace_directions::none.
-     * \param[in] trace_begin A seqan3::matrix_coordinate pointing to the begin of the trace to follow.
-     * \returns A std::ranges::subrange over the corresponding trace path.
-     * \throws std::out_of_range if the specified coordinate is out of range.
-     */
-    auto trace_path(matrix_coordinate const & trace_begin) const
-    {
-        using matrix_iter_t = std::ranges::iterator_t<matrix_t const>;
-        using trace_iterator_t = trace_iterator<matrix_iter_t>;
-        using path_t = std::ranges::subrange<trace_iterator_t, std::default_sentinel_t>;
-
-        return path_t{trace_iterator_t{matrix_iterator_at(trace_begin)}, std::default_sentinel};
-    }
-
     /*!\brief Returns an iterator pointing to the underlying trace matrix at the given matrix coordinate.
      * \param[in] trace_begin A seqan3::matrix_coordinate pointing to the begin of the trace to follow.
      * \returns An iterator pointing to the underlying trace matrix.
