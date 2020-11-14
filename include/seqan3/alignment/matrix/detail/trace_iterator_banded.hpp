@@ -12,7 +12,7 @@
 
 #pragma once
 
-#include <seqan3/alignment/matrix/detail/trace_iterator_base.hpp>
+#include <seqan3/alignment/matrix/detail/trace_iterator.hpp>
 
 namespace seqan3::detail
 {
