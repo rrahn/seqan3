@@ -14,11 +14,9 @@
 
 #include <seqan3/alignment/pairwise/align_pairwise.hpp>
 #include <seqan3/alignment/pairwise/align_result_selector.hpp>
-#include <seqan3/alignment/pairwise/alignment_algorithm.hpp>
 #include <seqan3/alignment/pairwise/alignment_configurator.hpp>
 #include <seqan3/alignment/pairwise/alignment_result.hpp>
 #include <seqan3/alignment/pairwise/edit_distance_unbanded.hpp>
-#include <seqan3/alignment/pairwise/policy/all.hpp>
 
 /*!\defgroup pairwise_alignment Pairwise
  * \ingroup alignment
