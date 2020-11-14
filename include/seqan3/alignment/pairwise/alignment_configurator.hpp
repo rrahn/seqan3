@@ -49,8 +49,6 @@
 #include <seqan3/core/detail/empty_type.hpp>
 #include <seqan3/core/detail/template_inspection.hpp>
 #include <seqan3/range/views/type_reduce.hpp>
-#include <seqan3/range/views/zip.hpp>
-#include <seqan3/utility/simd/simd.hpp>
 #include <seqan3/utility/tuple/concept.hpp>
 #include <seqan3/utility/type_traits/lazy_conditional.hpp>
 
@@ -372,25 +370,6 @@ private:
         else
             return has_free_ends_trailing(std::false_type{});
     }
-
-    /*!\brief Configures the scoring scheme to use for the alignment computation.
-     *
-     * \tparam function_wrapper_t The invocable alignment function type-erased via std::function.
-     * \tparam config_t The alignment configuration type.
-     *
-     * \param[in] cfg The passed configuration object.
-     *
-     * \returns the configured alignment algorithm.
-     *
-     * \details
-     *
-     * The correct scoring scheme is selected based on the vectorisation mode. If no vectorisation is enabled, the
-     * scoring scheme is the one configured in seqan3::align_cfg::scoring. If vectorisation is enabled, then the
-     * appropriate scoring scheme for the vectorised alignment algorithm is selected. This involves checking whether the
-     * passed scoring scheme is a matrix or a simple scoring scheme, which has only mismatch and match costs.
-     */
-    template <typename function_wrapper_t, typename config_t>
-    static constexpr function_wrapper_t configure_scoring_scheme(config_t const & cfg);
 
     /*!\brief Constructs the actual alignment algorithm wrapped in the passed std::function object.
      *
