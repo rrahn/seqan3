@@ -16,7 +16,6 @@
 #include <seqan3/std/ranges>
 
 #include <seqan3/alignment/matrix/detail/aligned_sequence_builder.hpp>
-#include <seqan3/alignment/matrix/detail/trace_iterator_banded.hpp>
 #include <seqan3/alignment/matrix/detail/trace_iterator.hpp>
 #include <seqan3/alignment/pairwise/detail/type_traits.hpp>
 #include <seqan3/core/detail/empty_type.hpp>
@@ -330,21 +329,15 @@ protected:
                 auto trace_matrix_iter = alignment_matrix.matrix_iterator_at(coordinate);
 
                 using matrix_iter_t = decltype(trace_matrix_iter);
-                using trace_iterator_t = std::conditional_t<traits_type::is_banded,
-                                                            trace_iterator_banded<matrix_iter_t>,
-                                                            trace_iterator<matrix_iter_t>>;
+                using trace_iterator_t = trace_iterator<matrix_iter_t>;
                 using path_t = std::ranges::subrange<trace_iterator_t, std::default_sentinel_t>;
 
                 // Create the builder and return the generated alignment.
                 aligned_sequence_builder builder{std::forward<decltype(sequence1)>(sequence1),
                                                  std::forward<decltype(sequence2)>(sequence2)};
 
-                // TODO: Make this the default iterator without differentiating between band and non-band.
-                if constexpr (traits_type::is_banded)
-                    return builder(path_t{trace_iterator_t{trace_matrix_iter, column_index_type{upper_diagonal}, false},
-                                          std::default_sentinel});
-                else
-                    return builder(path_t{trace_iterator_t{trace_matrix_iter}, std::default_sentinel});
+                return builder(path_t{trace_iterator_t{trace_matrix_iter, column_index_type{upper_diagonal}, false},
+                                      std::default_sentinel});
             }
             else
             {
