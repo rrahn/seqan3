@@ -256,9 +256,9 @@ struct edit_distance_trace_matrix_full<word_t, is_semi_global, use_max_errors>::
      */
     //!\brief Input iterator tag.
     using iterator_category = std::input_iterator_tag;
-    //!\copydoc seqan3::detail::trace_iterator_base::value_type
+    //!\copydoc seqan3::detail::trace_iterator::value_type
     using value_type = detail::trace_directions;
-    //!\copydoc seqan3::detail::trace_iterator_base::difference_type
+    //!\copydoc seqan3::detail::trace_iterator::difference_type
     using difference_type = std::ptrdiff_t;
     //!\}
 
@@ -274,7 +274,7 @@ struct edit_distance_trace_matrix_full<word_t, is_semi_global, use_max_errors>::
     /*!\name Element access
      * \{
      */
-    //!\copydoc seqan3::detail::trace_iterator_base::operator*
+    //!\copydoc seqan3::detail::trace_iterator::operator*
     constexpr value_type operator*() const
     {
         value_type dir = parent->at(coordinate());
@@ -290,7 +290,7 @@ struct edit_distance_trace_matrix_full<word_t, is_semi_global, use_max_errors>::
             return D;
     }
 
-    //!\copydoc seqan3::detail::trace_iterator_base::coordinate
+    //!\copydoc seqan3::detail::trace_iterator::coordinate
     [[nodiscard]] constexpr matrix_coordinate const & coordinate() const
     {
         return coordinate_;
@@ -300,7 +300,7 @@ struct edit_distance_trace_matrix_full<word_t, is_semi_global, use_max_errors>::
     /*!\name Arithmetic operators
      * \{
      */
-    //!\copydoc seqan3::detail::trace_iterator_base::operator++
+    //!\copydoc seqan3::detail::trace_iterator::operator++
     constexpr trace_path_iterator & operator++()
     {
         value_type dir = *(*this);
@@ -327,7 +327,7 @@ struct edit_distance_trace_matrix_full<word_t, is_semi_global, use_max_errors>::
         return *this;
     }
 
-    //!\copydoc seqan3::detail::trace_iterator_base::operator++
+    //!\copydoc seqan3::detail::trace_iterator::operator++
     constexpr void operator++(int)
     {
         ++(*this);
@@ -337,7 +337,7 @@ struct edit_distance_trace_matrix_full<word_t, is_semi_global, use_max_errors>::
     /*!\name Comparison operators
      * \{
      */
-    //!\copydoc seqan3::detail::trace_iterator_base::operator==(derived_t const &, std::default_sentinel_t const &)
+    //!\copydoc seqan3::detail::trace_iterator::operator==(trace_iterator const &, std::default_sentinel_t const &)
     friend bool operator==(trace_path_iterator const & it, std::default_sentinel_t)
     {
         return *it == value_type::none;
@@ -349,7 +349,7 @@ struct edit_distance_trace_matrix_full<word_t, is_semi_global, use_max_errors>::
         return it == std::default_sentinel;
     }
 
-    //!\copydoc seqan3::detail::trace_iterator_base::operator!=(derived_t const &, std::default_sentinel_t const &)
+    //!\copydoc seqan3::detail::trace_iterator::operator!=(trace_iterator const &, std::default_sentinel_t const &)
     friend bool operator!=(trace_path_iterator const & it, std::default_sentinel_t)
     {
         return !(it == std::default_sentinel);
