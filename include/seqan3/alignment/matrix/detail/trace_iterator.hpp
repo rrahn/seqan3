@@ -21,7 +21,7 @@
 namespace seqan3::detail
 {
 
-/*!\brief A CRTP-base class for trace iterator implementations for the alignment algorithms.
+/*!\brief Iterator following the trace path of a trace matrix.
  * \ingroup alignment_matrix
  * \implements std::forward_iterator
  *
@@ -37,8 +37,9 @@ namespace seqan3::detail
  * seqan3::detail::trace_directions::none.
  * Accordingly, when advancing this iterator, it actually moves from right to left and from bottom to top in the
  * underlying matrix. When the iterator is dereferenced, it outputs any of the following direction:
- * seqan3::detail::trace_directions::diagonal, seqan3::detail::trace_directions::up, or
- * seqan3::detail::trace_directions::left.
+ * * seqan3::detail::trace_directions::diagonal,
+ * * seqan3::detail::trace_directions::up, or
+ * * seqan3::detail::trace_directions::left.
  *
  * In addition, the iterator provides an additional member to access the current position as a
  * seqan3::detail::matrix_coordinate.
@@ -47,15 +48,14 @@ namespace seqan3::detail
  * Note, it does not directly dereference the actual trace direction stored in the underlying matrix.
  * Thus, it cannot be used as an output iterator.
  *
- * ### Overloading the behaviour
+ * ### Banded trace matrix
  *
- * The behaviour of following a trace direction can be customised through the derived type by overloading the functions
- * * seqan3::detail::trace_iterator::go_diagonal,
- * * seqan3::detail::trace_iterator::go_left, and
- * * seqan3::detail::trace_iterator::go_up.
- *
- * In the default implementation they move along an unbanded matrix. This means, they go to the previous cell in the
- * respective direction.
+ * Following the trace in the underlying matrix is tightly coupled with the alignment implementation. To follow the
+ * trace a pivot column index has to be provided that indicates the position where the band diverges from the first
+ * alignment row. This is usually the same as the upper diagonal set within the algorithm configuration.
+ * Moving the underlying matrix iterator depends on the current position of the trace iterator within the underlying
+ * matrix with respect to the pivot column. If the iterator is before the pivot column, the iterator moves identical
+ * to the unbanded case. If the iterator is behind the pivot column, the shift in the rows must be accounted for.
  */
 template <two_dimensional_matrix_iterator matrix_iter_t>
 class trace_iterator
@@ -64,6 +64,7 @@ private:
     static_assert(std::same_as<std::iter_value_t<matrix_iter_t>, trace_directions>,
                   "Value type of the underlying iterator must be seqan3::detail::trace_directions.");
 
+    // befriend the trace iterator with different matrix iter (non-const to const conversion).
     template <two_dimensional_matrix_iterator>
     friend class trace_iterator;
 
@@ -90,10 +91,9 @@ public:
         trace_iterator{std::move(matrix_iter), column_index_type{std::numeric_limits<size_t>::max()}, false}
     {}
 
-    /*!\brief Constructs from the underlying trace matrix iterator indicating the start of the trace path.
+    /*!\brief \copybrief seqan3::detail::trace_iterator::trace_iterator(matrix_iter_t matrix_iter)
      * \param[in] matrix_iter The underlying matrix iterator.
-     * \param[in] pivot_column The last column index which is still inside of the band in the first row of the
-     *                         banded matrix.
+     * \param[in] pivot_column The position of the upper diagonal.
      * \param[in] legacy_iterator A boolean flag indicating whether the old alignment is using this; defaults to `true`.
      *
      * \details
@@ -114,7 +114,7 @@ public:
         set_trace_direction(*this->matrix_iter);
     }
 
-    /*!\brief Constructs from the underlying trace matrix iterator indicating the start of the trace path.
+    /*!\brief \copybrief seqan3::detail::trace_iterator::trace_iterator(matrix_iter_t matrix_iter)
      * \tparam other_matrix_iter_t The underlying matrix iterator type of `other`; the condition
      *                             `std::constructible_from<matrix_iter_t, other_matrix_iter_t>` must evaluate to `true`.
      * \param[in] other The underlying matrix iterator.
@@ -255,8 +255,7 @@ public:
     //!\}
 
 private:
-    /*!\name Overload functions
-     * \brief These functions can be overloaded by the derived class to customise the iterator.
+    /*!\name Iterator movement
      * \{
      */
     //!\brief Moves iterator to previous left cell.
