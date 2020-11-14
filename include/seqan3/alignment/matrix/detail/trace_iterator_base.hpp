@@ -6,7 +6,7 @@
 // -----------------------------------------------------------------------------------------------------
 
 /*!\file
- * \brief Provides seqan3::detail::trace_iterator_base.
+ * \brief Provides seqan3::detail::trace_iterator.
  * \author Rene Rahn <rene.rahn AT fu-berlin.de>
  */
 
@@ -25,7 +25,6 @@ namespace seqan3::detail
  * \ingroup alignment_matrix
  * \implements std::forward_iterator
  *
- * \tparam derived_t The derived iterator type.
  * \tparam matrix_iter_t The wrapped matrix iterator; must model seqan3::detail::two_dimensional_matrix_iterator and
  *                       the iterator's value type must be the same as seqan3::detail::trace_directions, i.e.
  *                       `std::same_as<std::iter_value_t<matrix_iter_t>, trace_directions>` must evaluate to `true`.
@@ -51,69 +50,92 @@ namespace seqan3::detail
  * ### Overloading the behaviour
  *
  * The behaviour of following a trace direction can be customised through the derived type by overloading the functions
- * * seqan3::detail::trace_iterator_base::go_diagonal,
- * * seqan3::detail::trace_iterator_base::go_left, and
- * * seqan3::detail::trace_iterator_base::go_up.
+ * * seqan3::detail::trace_iterator::go_diagonal,
+ * * seqan3::detail::trace_iterator::go_left, and
+ * * seqan3::detail::trace_iterator::go_up.
  *
  * In the default implementation they move along an unbanded matrix. This means, they go to the previous cell in the
  * respective direction.
  */
-template <typename derived_t, two_dimensional_matrix_iterator matrix_iter_t>
-class trace_iterator_base
+template <two_dimensional_matrix_iterator matrix_iter_t>
+class trace_iterator
 {
 private:
     static_assert(std::same_as<std::iter_value_t<matrix_iter_t>, trace_directions>,
                   "Value type of the underlying iterator must be seqan3::detail::trace_directions.");
 
-    //!\brief Befriend with corresponding const_iterator.
-    template <typename other_derived_t, two_dimensional_matrix_iterator other_matrix_iter_t>
-    //!\cond
-        requires std::constructible_from<derived_t, other_derived_t> &&
-                 std::constructible_from<matrix_iter_t, other_matrix_iter_t>
-    //!\endcond
-    friend class trace_iterator_base;
+    template <two_dimensional_matrix_iterator>
+    friend class trace_iterator;
 
-    //!\brief Befriend the derived iterator class to allow calling the private constructors.
-    friend derived_t;
+    matrix_iter_t matrix_iter{}; //!< The underlying matrix iterator.
+    size_t pivot_column{}; //!< The largest column index which is inside of the band in the first row of the matrix.
+    trace_directions current_direction{}; //!< The current trace direction.
+    bool legacy_iterator{false}; //!< If this iterator is used by the old alignment algorithm.
 
+public:
     /*!\name Constructors, destructor and assignment
      * \{
      */
-    constexpr trace_iterator_base() = default; //!< Defaulted.
-    constexpr trace_iterator_base(trace_iterator_base const &) = default; //!< Defaulted.
-    constexpr trace_iterator_base(trace_iterator_base &&) = default; //!< Defaulted.
-    constexpr trace_iterator_base & operator=(trace_iterator_base const &) = default; //!< Defaulted.
-    constexpr trace_iterator_base & operator=(trace_iterator_base &&) = default; //!< Defaulted.
-    ~trace_iterator_base() = default; //!< Defaulted.
+    constexpr trace_iterator() = default; //!< Defaulted.
+    constexpr trace_iterator(trace_iterator const &) = default; //!< Defaulted.
+    constexpr trace_iterator(trace_iterator &&) = default; //!< Defaulted.
+    constexpr trace_iterator & operator=(trace_iterator const &) = default; //!< Defaulted.
+    constexpr trace_iterator & operator=(trace_iterator &&) = default; //!< Defaulted.
+    ~trace_iterator() = default; //!< Defaulted.
 
     /*!\brief Constructs from the underlying trace matrix iterator indicating the start of the trace path.
      * \param[in] matrix_iter The underlying matrix iterator.
      */
-    constexpr trace_iterator_base(matrix_iter_t const matrix_iter) noexcept : matrix_iter{matrix_iter}
+    explicit constexpr trace_iterator(matrix_iter_t matrix_iter) noexcept :
+        trace_iterator{std::move(matrix_iter), column_index_type{std::numeric_limits<size_t>::max()}, false}
+    {}
+
+    /*!\brief Constructs from the underlying trace matrix iterator indicating the start of the trace path.
+     * \param[in] matrix_iter The underlying matrix iterator.
+     * \param[in] pivot_column The last column index which is still inside of the band in the first row of the
+     *                         banded matrix.
+     * \param[in] legacy_iterator A boolean flag indicating whether the old alignment is using this; defaults to `true`.
+     *
+     * \details
+     *
+     * The legacy_iterator flag changes the behaviour of the banded iterator when moving to the previous cell in
+     * horizontal or diagonal direction. This depends on the alignment implementation and is handled differently in
+     * the new implementation.
+     */
+    template <typename index_t>
+    constexpr trace_iterator(matrix_iter_t matrix_iter,
+                             column_index_type<index_t> const & pivot_column,
+                             bool legacy_iterator = true)
+        noexcept :
+        matrix_iter{std::move(matrix_iter)},
+        pivot_column{static_cast<size_t>(pivot_column.get())},
+        legacy_iterator{legacy_iterator}
     {
-        set_trace_direction(*matrix_iter);
+        set_trace_direction(*this->matrix_iter);
     }
 
     /*!\brief Constructs from the underlying trace matrix iterator indicating the start of the trace path.
      * \tparam other_matrix_iter_t The underlying matrix iterator type of `other`; the condition
-     *                             `std::constructible_from<matrix_iter_t, other_matrix_iter_t>` must evaluate to
-     *                             `true`.
+     *                             `std::constructible_from<matrix_iter_t, other_matrix_iter_t>` must evaluate to `true`.
      * \param[in] other The underlying matrix iterator.
      *
      * \details
      *
      * Allows the conversion of non-const to const iterator.
      */
-    template <typename other_derived_t, two_dimensional_matrix_iterator other_matrix_iter_t>
+    template <two_dimensional_matrix_iterator other_matrix_iter_t>
     //!\cond
-        requires std::constructible_from<matrix_iter_t, other_matrix_iter_t>
+        requires (!std::same_as<matrix_iter_t, other_matrix_iter_t>) &&
+                 std::constructible_from<matrix_iter_t, other_matrix_iter_t>
     //!\endcond
-    constexpr trace_iterator_base(trace_iterator_base<other_derived_t, other_matrix_iter_t> const & other) noexcept :
-        trace_iterator_base{other.matrix_iter}
+    constexpr trace_iterator(trace_iterator<other_matrix_iter_t> other) noexcept :
+        trace_iterator{matrix_iter_t{std::move(other.matrix_iter)},
+                       column_index_type{other.pivot_column},
+                       other.legacy_iterator}
     {}
+
     //!\}
 
-public:
     /*!\name Associated types
      * \{
      */
@@ -142,7 +164,10 @@ public:
     //!\brief Returns the current coordinate in two-dimensional space.
     [[nodiscard]] constexpr matrix_coordinate coordinate() const noexcept
     {
-        return matrix_iter.coordinate();
+        auto coord = matrix_iter.coordinate();
+        // only correct the row coordinate if the current column is greater than the set upper_diagonal.
+        coord.row += (coord.col > pivot_column || legacy_iterator) * static_cast<int32_t>(coord.col - pivot_column);
+        return coord;
     }
     //!\}
 
@@ -150,7 +175,7 @@ public:
      * \{
      */
     //!\brief Advances the iterator by one.
-    constexpr derived_t & operator++() noexcept
+    constexpr trace_iterator & operator++() noexcept
     {
         trace_directions old_dir = *matrix_iter;
 
@@ -158,14 +183,14 @@ public:
 
         if (current_direction == trace_directions::up)
         {
-            derived().go_up(matrix_iter);
+            go_up(matrix_iter);
             // Set new trace direction if last position was up_open.
             if (static_cast<bool>(old_dir & trace_directions::up_open))
                 set_trace_direction(*matrix_iter);
         }
         else if (current_direction == trace_directions::left)
         {
-            derived().go_left(matrix_iter);
+            go_left(matrix_iter);
             // Set new trace direction if last position was left_open.
             if (static_cast<bool>(old_dir & trace_directions::left_open))
                 set_trace_direction(*matrix_iter);
@@ -174,16 +199,16 @@ public:
         {
             assert(current_direction == trace_directions::diagonal);
 
-            derived().go_diagonal(matrix_iter);
+            go_diagonal(matrix_iter);
             set_trace_direction(*matrix_iter);
         }
-        return derived();
+        return *this;
     }
 
     //!\brief Returns an iterator advanced by one.
-    constexpr derived_t operator++(int) noexcept
+    constexpr trace_iterator operator++(int) noexcept
     {
-        derived_t tmp{derived()};
+        trace_iterator tmp{*this};
         ++(*this);
         return tmp;
     }
@@ -193,37 +218,37 @@ public:
      * \{
      */
     //!\brief Returns `true` if both iterators are equal, `false` otherwise.
-    constexpr friend bool operator==(derived_t const & lhs, derived_t const & rhs) noexcept
+    constexpr friend bool operator==(trace_iterator const & lhs, trace_iterator const & rhs) noexcept
     {
         return lhs.matrix_iter == rhs.matrix_iter;
     }
 
     //!\brief Returns `true` if the pointed-to-element is seqan3::detail::trace_directions::none.
-    constexpr friend bool operator==(derived_t const & lhs, std::default_sentinel_t const &) noexcept
+    constexpr friend bool operator==(trace_iterator const & lhs, std::default_sentinel_t const &) noexcept
     {
         return *lhs.matrix_iter == trace_directions::none;
     }
 
     //!\brief copydoc operator==()
-    constexpr friend bool operator==(std::default_sentinel_t const &, derived_t const & rhs) noexcept
+    constexpr friend bool operator==(std::default_sentinel_t const &, trace_iterator const & rhs) noexcept
     {
         return rhs == std::default_sentinel;
     }
 
     //!\brief Returns `true` if both iterators are not equal, `false` otherwise.
-    constexpr friend bool operator!=(derived_t const & lhs, derived_t const & rhs) noexcept
+    constexpr friend bool operator!=(trace_iterator const & lhs, trace_iterator const & rhs) noexcept
     {
         return !(lhs == rhs);
     }
 
     //!\brief Returns `true` if the pointed-to-element is not seqan3::detail::trace_directions::none.
-    constexpr friend bool operator!=(derived_t const & lhs, std::default_sentinel_t const &) noexcept
+    constexpr friend bool operator!=(trace_iterator const & lhs, std::default_sentinel_t const &) noexcept
     {
         return !(lhs == std::default_sentinel);
     }
 
     //!\brief copydoc operator!=()
-    constexpr friend bool operator!=(std::default_sentinel_t const &, derived_t const & rhs) noexcept
+    constexpr friend bool operator!=(std::default_sentinel_t const &, trace_iterator const & rhs) noexcept
     {
         return !(rhs == std::default_sentinel);
     }
@@ -237,7 +262,10 @@ private:
     //!\brief Moves iterator to previous left cell.
     constexpr void go_left(matrix_iter_t & iter) const noexcept
     {
-        iter -= matrix_offset{row_index_type{0}, column_index_type{1}};
+        // Note, in the banded matrix, the columns are virtually shifted by one cell.
+        // So going left means go to the previous column and then one row down.
+        int32_t row = coordinate().col > pivot_column || legacy_iterator;
+        iter -= matrix_offset{row_index_type{-row}, column_index_type{1}};
     }
 
     //!\brief Moves iterator to previous up cell.
@@ -249,7 +277,10 @@ private:
     //!\brief Moves iterator to previous diagonal cell.
     constexpr void go_diagonal(matrix_iter_t & iter) const noexcept
     {
-        iter -= matrix_offset{row_index_type{1}, column_index_type{1}};
+        // Note, in the banded matrix, the columns are virtually shifted by one cell.
+        // So going diagonal means go to the previous column and stay in the same row.
+        int32_t row = coordinate().col <= pivot_column && !legacy_iterator;
+        iter -= matrix_offset{row_index_type{row}, column_index_type{1}};
     }
     //!\}
 
@@ -275,21 +306,6 @@ private:
             current_direction = trace_directions::none;
         }
     }
-
-    //!\brief Cast this object to its derived type.
-    constexpr derived_t & derived() noexcept
-    {
-        return static_cast<derived_t &>(*this);
-    }
-
-    //!\overload
-    constexpr derived_t const & derived() const noexcept
-    {
-        return static_cast<derived_t const &>(*this);
-    }
-
-    matrix_iter_t matrix_iter{}; //!< The underlying matrix iterator.
-    trace_directions current_direction{}; //!< The current trace direction.
 };
 
 } // namespace seqan3::detail
