@@ -11,7 +11,7 @@
 #include <type_traits>
 #include <vector>
 
-#include <seqan3/alignment/matrix/detail/trace_iterator_banded.hpp>
+#include <seqan3/alignment/matrix/detail/trace_iterator.hpp>
 #include <seqan3/alignment/matrix/detail/two_dimensional_matrix.hpp>
 #include <seqan3/alignment/matrix/trace_directions.hpp>
 #include <seqan3/range/views/to.hpp>
@@ -46,9 +46,9 @@ struct trace_iterator_banded_test : public ::testing::Test
         //4        D  D  D UO
         //5           D  D  U
 
-    using trace_iterator_type = decltype(seqan3::detail::trace_iterator_banded{matrix.begin(),
-                                                                               seqan3::detail::column_index_type{0},
-                                                                               true});
+    using trace_iterator_type = decltype(seqan3::detail::trace_iterator{matrix.begin(),
+                                                                        seqan3::detail::column_index_type{0},
+                                                                        true});
     using path_type = std::ranges::subrange<trace_iterator_type, std::default_sentinel_t>;
 
     path_type path(seqan3::detail::matrix_offset const & offset)
@@ -68,8 +68,8 @@ TEST_F(trace_iterator_banded_test, concepts)
 
 TEST_F(trace_iterator_banded_test, type_deduction)
 {
-    seqan3::detail::trace_iterator_banded it{matrix.begin(), seqan3::detail::column_index_type{0u}};
-    EXPECT_TRUE((std::is_same_v<decltype(it), seqan3::detail::trace_iterator_banded<decltype(matrix.begin())>>));
+    seqan3::detail::trace_iterator it{matrix.begin(), seqan3::detail::column_index_type{0u}};
+    EXPECT_TRUE((std::is_same_v<decltype(it), seqan3::detail::trace_iterator<decltype(matrix.begin())>>));
 }
 
 TEST_F(trace_iterator_banded_test, trace_path_2_5)
@@ -126,9 +126,9 @@ struct iterator_fixture<trace_iterator_banded_test> : public trace_iterator_band
     using base_t = trace_iterator_banded_test;
 
     using iterator_type = typename base_t::trace_iterator_type;
-    using const_iterator_type = decltype(seqan3::detail::trace_iterator_banded{base_t::matrix.cbegin(),
-                                                                               seqan3::detail::column_index_type{0},
-                                                                               true});
+    using const_iterator_type = decltype(seqan3::detail::trace_iterator{base_t::matrix.cbegin(),
+                                                                        seqan3::detail::column_index_type{0},
+                                                                        true});
 
     // Test forward iterator concept.
     using iterator_tag = std::forward_iterator_tag;
