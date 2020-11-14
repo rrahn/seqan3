@@ -12,6 +12,9 @@
 
 #pragma once
 
+#include <seqan3/std/concepts>
+
+#include <seqan3/alignment/matrix/detail/aligned_sequence_builder.hpp>
 #include <seqan3/alignment/pairwise/detail/policy_alignment_algorithm_logger.hpp>
 #include <seqan3/alignment/pairwise/detail/type_traits.hpp>
 #include <seqan3/core/algorithm/configuration.hpp>
@@ -20,6 +23,35 @@
 
 namespace seqan3::detail
 {
+template <typename result_t>
+struct alignment_result_builder_traits
+{
+private:
+    using result_data_t = typename alignment_result_value_type_accessor<result_t>::type;
+
+public:
+
+    //!\brief Flag indicating whether the score shall be computed.
+    static constexpr bool compute_score = result_data_t::has_score;
+    //!\brief Flag indicating whether the end positions shall be computed.
+    static constexpr bool compute_end_positions = result_data_t::has_end_positions;
+    //!\brief Flag indicating whether the begin positions shall be computed.
+    static constexpr bool compute_begin_positions = result_data_t::has_begin_positions;
+    //!\brief Flag indicating whether the sequence alignment shall be computed.
+    static constexpr bool compute_sequence_alignment = result_data_t::has_alignment;
+    //!\brief Flag indicating whether the id of the first sequence shall be returned.
+    static constexpr bool output_sequence1_id = result_data_t::has_sequence1_id;
+    //!\brief Flag indicating whether the id of the second sequence shall be returned.
+    static constexpr bool output_sequence2_id = result_data_t::has_sequence2_id;
+    //!\brief Flag indicating whether the trace matrix needs to be computed.
+    static constexpr bool requires_trace_information = compute_begin_positions || compute_sequence_alignment;
+    //!\brief Flag indicating whether debug mode is enabled.
+    static constexpr bool compute_debug_score_matrix = result_data_t::has_debug_score_matrix;
+    static constexpr bool compute_debug_trace_matrix = result_data_t::has_debug_trace_matrix;
+    static constexpr bool is_debug = compute_debug_score_matrix || compute_debug_trace_matrix;
+
+    using result_type = result_t;
+};
 
 /*!\brief Implements the alignment result builder.
  * \ingroup pairwise_alignment
@@ -31,19 +63,12 @@ namespace seqan3::detail
  *
  * Implements the interfaces to build the alignment result based on the previously selected output configurations.
  */
-template <typename alignment_configuration_t>
-#if !SEQAN3_WORKAROUND_GCC_93467
-//!\cond
-    requires is_type_specialisation_of_v<alignment_configuration_t, configuration>
-//!\endcond
-#endif // !SEQAN3_WORKAROUND_GCC_93467
+template <typename traits_type>
 class policy_alignment_result_builder
 {
 protected:
-    //!\brief The configuration traits type.
-    using traits_type = alignment_configuration_traits<alignment_configuration_t>;
     //!\brief The alignment result type.
-    using result_type = typename traits_type::alignment_result_type;
+    using result_type = typename traits_type::result_type;
 
     static_assert(!std::same_as<result_type, empty_type>, "The alignment result type was not configured.");
 
@@ -60,10 +85,13 @@ protected:
     /*!\brief Construction and initialisation using the alignment configuration.
      * \param[in] config The alignment configuration [not used in this context].
      */
+    template <typename alignment_configuration_t>
+    //!\cond
+        requires is_type_specialisation_of_v<alignment_configuration_t, configuration>
+    //!\endcond
     policy_alignment_result_builder(alignment_configuration_t const & SEQAN3_DOXYGEN_ONLY(config))
     {}
     //!\}
-
 
     /*!\brief Builds the seqan3::alignment_result based on the given alignment result type and then invokes the
      *        given callable with the result.
@@ -117,7 +145,7 @@ protected:
      * \tparam id_t The type of the id.
      * \tparam score_t The type of the score.
      * \tparam matrix_coordinate_t The type of the matrix coordinate.
-     * \tparam aligned_sequence_builder_t The type of the aligned sequences builder.
+     * \tparam trace_path_from_t The type of the aligned sequences builder.
      * \tparam callback_t The type of the callback to invoke.
      *
      * \param[in] logger The debug logger (only available when run in debug mode).
@@ -125,7 +153,7 @@ protected:
      * \param[in] id The associated id.
      * \param[in] score The best alignment score.
      * \param[in] end_positions The matrix coordinate of the best alignment score.
-     * \param[in] aligned_sequence_builder The aligned sequence builder.
+     * \param[in] trace_path_from The aligned sequence builder.
      * \param[in] callback The callback to invoke with the generated result.
      *
      * \details
@@ -143,7 +171,7 @@ protected:
               typename index_t,
               typename score_t,
               typename matrix_coordinate_t,
-              typename aligned_sequence_builder_t,
+              typename trace_path_from_t,
               typename callback_t>
     //!\cond
         requires std::invocable<callback_t, result_type>
@@ -153,7 +181,7 @@ protected:
                                      [[maybe_unused]] index_t && id,
                                      [[maybe_unused]] score_t score,
                                      [[maybe_unused]] matrix_coordinate_t end_positions,
-                                     [[maybe_unused]] aligned_sequence_builder_t const & aligned_sequence_builder,
+                                     [[maybe_unused]] trace_path_from_t const & trace_path_from,
                                      callback_t && callback)
     {
         using std::get;
@@ -185,9 +213,8 @@ protected:
 
         if constexpr (traits_type::requires_trace_information)
         {
-            auto aligned_sequence_result = aligned_sequence_builder(get<0>(sequence_pair),
-                                                                    get<1>(sequence_pair),
-                                                                    end_positions);
+            aligned_sequence_builder builder{get<0>(sequence_pair), get<1>(sequence_pair)};
+            auto aligned_sequence_result = builder(trace_path_from(end_positions));
 
             if constexpr (traits_type::compute_begin_positions)
             {
@@ -212,6 +239,5 @@ protected:
 
         callback(std::move(result));
     }
-
 };
 } // namespace seqan3::detail

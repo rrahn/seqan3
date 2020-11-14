@@ -1,0 +1,4 @@
+seqan3_test(simd_global_affine_banded_dna_test.cpp)
+seqan3_test(simd_global_affine_unbanded_dna_test.cpp)
+
+

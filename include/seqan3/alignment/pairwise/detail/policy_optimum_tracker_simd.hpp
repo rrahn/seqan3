@@ -25,6 +25,16 @@
 namespace seqan3::detail
 {
 
+template <typename score_t, typename original_score_t, typename matrix_coordinate_t, typename matrix_index_t>
+struct optimum_tracker_simd_traits
+{
+    using score_type = score_t;
+    using original_score_type = original_score_t;
+    using matrix_coordinate_type = matrix_coordinate_t;
+    using matrix_index_type = matrix_index_t;
+    inline static constexpr size_t alignments_per_vector = simd_traits<score_type>::length;
+};
+
 /*!\brief Function object that compares and updates the alignment optimum for the vectorised global alignment algorithm.
  * \ingroup pairwise_alignment
  *
@@ -84,24 +94,22 @@ struct max_score_updater_simd_global
  * \ingroup pairwise_alignment
  * \copydetails seqan3::detail::policy_optimum_tracker
  */
-template <typename alignment_configuration_t, std::semiregular optimum_updater_t>
+template <typename traits_type, std::semiregular optimum_updater_t>
 //!\cond
-    requires is_type_specialisation_of_v<alignment_configuration_t, configuration> &&
-             std::invocable<optimum_updater_t,
-                            typename alignment_configuration_traits<alignment_configuration_t>::score_type &,
-                            typename alignment_configuration_traits<alignment_configuration_t>::matrix_coordinate_type &,
-                            typename alignment_configuration_traits<alignment_configuration_t>::score_type,
-                            typename alignment_configuration_traits<alignment_configuration_t>::matrix_coordinate_type>
+    requires std::invocable<optimum_updater_t,
+                            typename traits_type::score_type &,
+                            typename traits_type::matrix_coordinate_type &,
+                            typename traits_type::score_type,
+                            typename traits_type::matrix_coordinate_type>
 //!\endcond
 class policy_optimum_tracker_simd :
-    protected policy_optimum_tracker<alignment_configuration_t, optimum_updater_t>
+    protected policy_optimum_tracker<traits_type, optimum_updater_t>
 {
 protected:
     //!\brief The type of the base class.
-    using base_policy_t = policy_optimum_tracker<alignment_configuration_t, optimum_updater_t>;
+    using base_policy_t = policy_optimum_tracker<traits_type, optimum_updater_t>;
 
     // Import the configured score type.
-    using typename base_policy_t::traits_type;
     using typename base_policy_t::score_type;
 
     //!\brief The scalar type of the simd vector.
@@ -136,6 +144,10 @@ protected:
      * Initialises the object to always track the last row and column, since this is needed for the vectorised global
      * alignment.
      */
+    template <typename alignment_configuration_t>
+    //!\cond
+        requires is_type_specialisation_of_v<alignment_configuration_t, configuration>
+    //!\endcond
     policy_optimum_tracker_simd(alignment_configuration_t const & config) : base_policy_t{config}
     {
         base_policy_t::test_last_row_cell = true;

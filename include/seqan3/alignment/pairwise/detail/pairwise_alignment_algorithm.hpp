@@ -15,18 +15,25 @@
 #include <seqan3/std/concepts>
 #include <seqan3/std/ranges>
 
-#include <seqan3/alignment/matrix/detail/aligned_sequence_builder.hpp>
-#include <seqan3/alignment/matrix/detail/trace_iterator.hpp>
-#include <seqan3/alignment/matrix/detail/trace_matrix_simd_adapter_iterator.hpp>
 #include <seqan3/alignment/pairwise/detail/type_traits.hpp>
 #include <seqan3/core/detail/empty_type.hpp>
 #include <seqan3/core/simd/view_to_simd.hpp>
 #include <seqan3/range/container/aligned_allocator.hpp>
 #include <seqan3/range/views/get.hpp>
+#include <seqan3/range/views/take.hpp>
 #include <seqan3/utility/detail/type_name_as_string.hpp>
 
 namespace seqan3::detail
 {
+
+template <typename score_t, typename original_score_t, typename result_t>
+struct algorithm_traits
+{
+    using score_type = score_t;
+    using original_score_type = original_score_t;
+    using alignment_result_type = result_t;
+    static constexpr bool is_vectorised = simd_concept<score_type>;
+};
 
 /*!\brief The alignment algorithm type to compute standard pairwise alignment using dynamic programming.
  * \implements std::invocable
@@ -44,15 +51,10 @@ namespace seqan3::detail
  * The algorithm computes a column based dynamic programming matrix given two sequences.
  * After the computation a user defined callback function is invoked with the computed seqan3::alignment_result.
  */
-template <typename alignment_configuration_t, typename ...policies_t>
-//!\cond
-    requires is_type_specialisation_of_v<alignment_configuration_t, configuration>
-//!\endcond
+template <typename traits_type, typename ...policies_t>
 class pairwise_alignment_algorithm : protected policies_t...
 {
 protected:
-    //!\brief The alignment configuration traits type with auxiliary information extracted from the configuration type.
-    using traits_type = alignment_configuration_traits<alignment_configuration_t>;
     //!\brief The configured score type.
     using score_type = typename traits_type::score_type;
     //!\brief The configured alignment result type.
@@ -78,6 +80,10 @@ public:
      *
      * Initialises the base policies of the alignment algorithm.
      */
+    template <typename alignment_configuration_t>
+    //!\cond
+        requires is_type_specialisation_of_v<alignment_configuration_t, configuration>
+    //!\endcond
     pairwise_alignment_algorithm(alignment_configuration_t const & config) : policies_t(config)...
     {}
     //!\}
@@ -142,8 +148,7 @@ public:
 
             auto && [alignment_matrix, index_matrix] = this->acquire_matrices(sequence1_size, sequence2_size);
 
-            if constexpr (traits_type::is_debug)
-                this->initialise_debug_matrices(sequence1_size, sequence2_size);
+            this->initialise_debug_matrices(sequence1_size, sequence2_size);
 
             compute_matrix(get<0>(sequence_pair), get<1>(sequence_pair), alignment_matrix, index_matrix);
             this->make_result_and_invoke(*this,
@@ -151,7 +156,7 @@ public:
                                          std::move(idx),
                                          this->optimal_score,
                                          this->optimal_coordinate,
-                                         alignment_builder(alignment_matrix),
+                                         trace_path_builder(alignment_matrix),
                                          callback);
         }
     }
@@ -266,7 +271,7 @@ protected:
                                          std::move(idx),
                                          std::move(score),
                                          std::move(coordinate),
-                                         alignment_builder(alignment_matrix, index),
+                                         trace_path_builder(alignment_matrix, index),
                                          callback);
             ++index;
         }
@@ -309,57 +314,12 @@ protected:
      *   computing additional trace information.
      */
     template <typename alignment_matrix_t>
-    auto alignment_builder([[maybe_unused]] alignment_matrix_t const & alignment_matrix, size_t const simd_lane = 0)
+    auto trace_path_builder([[maybe_unused]] alignment_matrix_t const & alignment_matrix, size_t const simd_lane = 0)
     {
         // Return a callable that can be invoked by the sequence builder.
-        return [&, simd_lane] (auto && sequence1, auto && sequence2, auto coordinate)
+        return [&, simd_lane] (auto const & coordinate)
         {
-            // clip upper_diagonal
-            int32_t upper_diagonal = std::clamp<int32_t>(this->upper_diagonal, 0, std::ranges::distance(sequence1));
-
-            // If banded alignment, the row coordinate is mapped from the global matrix coordinate to the
-            // internally defined one.
-            if constexpr (traits_type::is_banded)
-            {
-                int32_t column_coordinate = static_cast<int32_t>(coordinate.col);
-                coordinate.row -= (column_coordinate > upper_diagonal) * (column_coordinate - upper_diagonal);
-            }
-
-            if constexpr (traits_type::requires_trace_information)
-            {
-                // Get the matrix iterator at the specified alignment coordinate.
-                auto trace_matrix_iter = alignment_matrix.matrix_iterator_at(coordinate);
-
-                using matrix_iter_t = decltype(trace_matrix_iter);
-                using matrix_iter_adapter_t =
-                    lazy_conditional_t<traits_type::is_vectorised,
-                                       lazy<trace_matrix_simd_adapter_iterator, matrix_iter_t>,
-                                       matrix_iter_t>;
-                using trace_iterator_t = trace_iterator<matrix_iter_adapter_t>;
-                using path_t = std::ranges::subrange<trace_iterator_t, std::default_sentinel_t>;
-
-                // Create the builder and return the generated alignment.
-                aligned_sequence_builder builder{std::forward<decltype(sequence1)>(sequence1),
-                                                 std::forward<decltype(sequence2)>(sequence2)};
-
-                auto get_adapter_iter = [&] (auto iter)
-                {
-                    if constexpr (traits_type::is_vectorised)
-                        return matrix_iter_adapter_t{std::move(iter), simd_lane};
-                    else
-                        return iter;
-                };
-
-                return builder(path_t{trace_iterator_t{get_adapter_iter(std::move(trace_matrix_iter)),
-                                                       column_index_type{upper_diagonal}},
-                                      std::default_sentinel});
-            }
-            else
-            {
-                throw seqan3::invalid_alignment_configuration{"You are trying to invoke the aligned sequence builder, "
-                                                              "but the selected configuration disables the computation "
-                                                              "of the trace."};
-            }
+            return this->trace_path_from(alignment_matrix, coordinate, simd_lane);
         };
     }
 
@@ -392,7 +352,7 @@ protected:
                                                    sequence_collection_t & sequences,
                                                    padding_symbol_t const & padding_symbol)
     {
-        assert(static_cast<size_t>(std::ranges::distance(sequences)) <= traits_type::alignments_per_vector);
+        assert(static_cast<size_t>(std::ranges::distance(sequences)) <= simd_traits<score_type>::length);
 
         simd_sequence.clear();
         for (auto && simd_vector_chunk : sequences | views::to_simd<score_type>(padding_symbol))
@@ -514,9 +474,8 @@ protected:
 
         this->track_last_row_cell(*first_column_it, *cell_index_column_it);
 
-        if constexpr (traits_type::is_debug)
-            this->log_alignment_matrix_column(cell_index_column, alignment_column
-                                                               | views::take(std::ranges::distance(sequence2)+ 1));
+        this->log_alignment_matrix_column(cell_index_column, alignment_column
+                                                           | views::take(std::ranges::distance(sequence2)+ 1));
     }
 
     /*!\brief Initialise any column of the alignment matrix except the first one.
@@ -582,9 +541,8 @@ protected:
 
         this->track_last_row_cell(*alignment_column_it, *cell_index_column_it);
 
-        if constexpr (traits_type::is_debug)
-            this->log_alignment_matrix_column(cell_index_column, alignment_column
-                                                               | views::take(std::ranges::distance(sequence2) + 1));
+        this->log_alignment_matrix_column(cell_index_column, alignment_column
+                                                           | views::take(std::ranges::distance(sequence2) + 1));
     }
 };
 

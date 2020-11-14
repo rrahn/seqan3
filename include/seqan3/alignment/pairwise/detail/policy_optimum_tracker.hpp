@@ -25,6 +25,13 @@
 namespace seqan3::detail
 {
 
+template <typename score_t, typename matrix_coordinate_t>
+struct optimum_tracker_traits
+{
+    using score_type = score_t;
+    using matrix_coordinate_type = matrix_coordinate_t;
+};
+
 /*!\brief A function object that compares and possibly updates the alignment optimum with the current cell.
  * \ingroup pairwise_alignment
  *
@@ -181,20 +188,17 @@ public:
  * The optimum needs to be reset in between alignment computations in order to ensure that the correct result is
  * tracked.
  */
-template <typename alignment_configuration_t, std::semiregular optimum_updater_t>
+template <typename traits_type, std::semiregular optimum_updater_t>
 //!\cond
-    requires is_type_specialisation_of_v<alignment_configuration_t, configuration> &&
-             std::invocable<optimum_updater_t,
-                            typename alignment_configuration_traits<alignment_configuration_t>::score_type &,
-                            typename alignment_configuration_traits<alignment_configuration_t>::matrix_coordinate_type &,
-                            typename alignment_configuration_traits<alignment_configuration_t>::score_type,
-                            typename alignment_configuration_traits<alignment_configuration_t>::matrix_coordinate_type>
+    requires std::invocable<optimum_updater_t,
+                            typename traits_type::score_type &,
+                            typename traits_type::matrix_coordinate_type &,
+                            typename traits_type::score_type,
+                            typename traits_type::matrix_coordinate_type>
 //!\endcond
 class policy_optimum_tracker
 {
 protected:
-    //!\brief The configuration traits type.
-    using traits_type = alignment_configuration_traits<alignment_configuration_t>;
     //!\brief The configured score type.
     using score_type = typename traits_type::score_type;
     //!\brief The matrix coordinate type that is used to locate a cell inside of the alignment matrix.
@@ -232,12 +236,17 @@ protected:
      * Reads the state of seqan3::align_cfg::method_global and enables the tracking of the last row or column if
      * requested. Otherwise, only the last cell will be tracked.
      */
+    template <typename alignment_configuration_t>
+    //!\cond
+        requires is_type_specialisation_of_v<alignment_configuration_t, configuration>
+    //!\endcond
     policy_optimum_tracker(alignment_configuration_t const & config)
     {
         auto method_global_config = config.get_or(align_cfg::method_global{});
-        test_last_row_cell = method_global_config.free_end_gaps_sequence1_trailing || traits_type::is_local;
-        test_last_column_cell = method_global_config.free_end_gaps_sequence2_trailing || traits_type::is_local;
-        test_every_cell = traits_type::is_local;
+        constexpr bool track_all_cells = config.template exists<align_cfg::method_local>();
+        test_last_row_cell = method_global_config.free_end_gaps_sequence1_trailing || track_all_cells;
+        test_last_column_cell = method_global_config.free_end_gaps_sequence2_trailing || track_all_cells;
+        test_every_cell = track_all_cells;
     }
     //!\}
 
@@ -349,6 +358,14 @@ protected:
     void invoke_comparator(cell_t && cell, matrix_coordinate_type coordinate) noexcept
     {
         compare_and_set_optimum(optimal_score, optimal_coordinate, cell.best_score(), std::move(coordinate));
+    }
+
+    template <std::integral row_index_t, std::integral column_index_t>
+    void initialise_tracker([[maybe_unused]] row_index_type<row_index_t> const row_dimension,
+                            [[maybe_unused]] column_index_type<column_index_t> const column_dimension) noexcept
+    {
+        if constexpr (std::same_as<optimum_updater_t, max_score_banded_updater>)
+            compare_and_set_optimum.set_target_indices(row_dimension, column_dimension);
     }
 };
 } // namespace seqan3::detail

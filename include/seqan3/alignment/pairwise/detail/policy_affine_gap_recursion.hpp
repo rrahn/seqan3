@@ -26,6 +26,15 @@
 namespace seqan3::detail
 {
 
+template <typename score_t, typename original_score_t, typename trace_t, bool _is_local>
+struct affine_gap_recursion_traits
+{
+    using score_type = score_t;
+    using original_score_type = original_score_t;
+    using trace_type = trace_t;
+    inline static constexpr bool is_local = _is_local;
+};
+
 /*!\brief Implements the alignment recursion function for the alignment algorithm using affine gap costs.
  * \ingroup pairwise_alignment
  *
@@ -41,12 +50,10 @@ namespace seqan3::detail
  *       GOTOH, Osamu. An improved algorithm for matching biological sequences.
  *       Journal of molecular biology, 1982, 162. Jg., Nr. 3, S. 705-708.
  */
-template <typename alignment_configuration_t>
+template <typename traits_type>
 class policy_affine_gap_recursion
 {
 protected:
-    //!\brief The configuration traits type.
-    using traits_type = alignment_configuration_traits<alignment_configuration_t>;
     //!\brief The configured original score type.
     using original_score_type = typename traits_type::original_score_type;
     //!\brief The configured score type.
@@ -85,6 +92,10 @@ protected:
      * If no gap cost model was provided by the user the default gap costs `-10` and `-1` are set for the gap open score
      * and the gap extension score respectively.
      */
+    template <typename alignment_configuration_t>
+    //!\cond
+        requires is_type_specialisation_of_v<alignment_configuration_t, configuration>
+    //!\endcond
     explicit policy_affine_gap_recursion(alignment_configuration_t const & config)
     {
         // Get the gap scheme from the config or choose -1 and -10 as default.

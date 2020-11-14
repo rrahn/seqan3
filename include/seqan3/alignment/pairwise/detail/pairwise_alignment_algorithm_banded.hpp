@@ -28,24 +28,19 @@ namespace seqan3::detail
  * \ingroup pairwise_alignment
  * \copydetails seqan3::detail::pairwise_alignment_algorithm
  */
-template <typename alignment_configuration_t, typename ...policies_t>
-//!\cond
-    requires is_type_specialisation_of_v<alignment_configuration_t, configuration>
-//!\endcond
+template <typename traits_type, typename ...policies_t>
 class pairwise_alignment_algorithm_banded :
-    protected pairwise_alignment_algorithm<alignment_configuration_t, policies_t...>
+    protected pairwise_alignment_algorithm<traits_type, policies_t...>
 {
 protected:
     //!\brief The alignment configuration traits type with auxiliary information extracted from the configuration type.
-    using base_algorithm_t = pairwise_alignment_algorithm<alignment_configuration_t, policies_t...>;
+    using base_algorithm_t = pairwise_alignment_algorithm<traits_type, policies_t...>;
 
     // Import types from base class.
-    using typename base_algorithm_t::traits_type;
     using typename base_algorithm_t::alignment_result_type;
     using typename base_algorithm_t::score_type;
 
     static_assert(!std::same_as<alignment_result_type, empty_type>, "Alignment result type was not configured.");
-    static_assert(traits_type::is_banded, "Alignment configuration must have band configured.");
 
 public:
     /*!\name Constructors, destructor and assignment
@@ -67,6 +62,10 @@ public:
      *
      * \throws seqan3::invalid_alignment_configuration.
      */
+    template <typename alignment_configuration_t>
+    //!\cond
+        requires is_type_specialisation_of_v<alignment_configuration_t, configuration>
+    //!\endcond
     pairwise_alignment_algorithm_banded(alignment_configuration_t const & config) : base_algorithm_t(config)
     {}
     //!\}
@@ -88,17 +87,14 @@ public:
             size_t sequence1_size = std::ranges::distance(get<0>(sequence_pair));
             size_t const sequence2_size = std::ranges::distance(get<1>(sequence_pair));
 
-            if constexpr (traits_type::is_debug)
-                this->initialise_debug_matrices(sequence1_size, sequence2_size);
+            this->initialise_debug_matrices(sequence1_size, sequence2_size);
 
             auto && [alignment_matrix, index_matrix] = this->acquire_matrices(sequence1_size,
                                                                               sequence2_size,
                                                                               this->lowest_viable_score());
 
             // Initialise the cell updater with the dimensions of the regular matrix.
-            if constexpr (!traits_type::is_local) // Only if not local alignment.
-                this->compare_and_set_optimum.set_target_indices(row_index_type{sequence2_size},
-                                                                 column_index_type{sequence1_size});
+            this->initialise_tracker(row_index_type{sequence2_size}, column_index_type{sequence1_size});
 
             // Shrink the first sequence if the band ends before its actual end.
             sequence1_size = std::min(sequence1_size, this->upper_diagonal + sequence2_size);
@@ -112,7 +108,7 @@ public:
                                          std::move(idx),
                                          this->optimal_score,
                                          this->optimal_coordinate,
-                                         this->alignment_builder(alignment_matrix),
+                                         this->trace_path_builder(alignment_matrix),
                                          callback);
         }
     }
@@ -360,9 +356,8 @@ protected:
 
         this->track_last_row_cell(*current_alignment_column_it, *cell_index_column_it);
 
-        if constexpr (traits_type::is_debug)
-            this->log_alignment_matrix_column(cell_index_column, alignment_column
-                                                               | views::take(std::ranges::distance(sequence2)));
+        this->log_alignment_matrix_column(cell_index_column, alignment_column
+                                                           | views::take(std::ranges::distance(sequence2)));
     }
 };
 
