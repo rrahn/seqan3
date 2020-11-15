@@ -72,7 +72,6 @@ private:
     matrix_iter_t matrix_iter{}; //!< The underlying matrix iterator.
     size_t pivot_column{}; //!< The largest column index which is inside of the band in the first row of the matrix.
     trace_directions current_direction{}; //!< The current trace direction.
-    bool legacy_iterator{false}; //!< If this iterator is used by the old alignment algorithm.
 
 public:
     /*!\name Constructors, destructor and assignment
@@ -89,28 +88,17 @@ public:
      * \param[in] matrix_iter The underlying matrix iterator.
      */
     explicit constexpr trace_iterator(matrix_iter_t matrix_iter) noexcept :
-        trace_iterator{std::move(matrix_iter), column_index_type{std::numeric_limits<size_t>::max()}, false}
+        trace_iterator{std::move(matrix_iter), column_index_type{std::numeric_limits<size_t>::max()}}
     {}
 
     /*!\brief \copybrief seqan3::detail::trace_iterator::trace_iterator(matrix_iter_t matrix_iter)
      * \param[in] matrix_iter The underlying matrix iterator.
      * \param[in] pivot_column The position of the upper diagonal.
-     * \param[in] legacy_iterator A boolean flag indicating whether the old alignment is using this; defaults to `true`.
-     *
-     * \details
-     *
-     * The legacy_iterator flag changes the behaviour of the banded iterator when moving to the previous cell in
-     * horizontal or diagonal direction. This depends on the alignment implementation and is handled differently in
-     * the new implementation.
      */
     template <typename index_t>
-    constexpr trace_iterator(matrix_iter_t matrix_iter,
-                             column_index_type<index_t> const & pivot_column,
-                             bool legacy_iterator = true)
-        noexcept :
+    constexpr trace_iterator(matrix_iter_t matrix_iter, column_index_type<index_t> const & pivot_column) noexcept :
         matrix_iter{std::move(matrix_iter)},
-        pivot_column{static_cast<size_t>(pivot_column.get())},
-        legacy_iterator{legacy_iterator}
+        pivot_column{static_cast<size_t>(pivot_column.get())}
     {
         set_trace_direction(*this->matrix_iter);
     }
@@ -130,9 +118,7 @@ public:
                  std::constructible_from<matrix_iter_t, other_matrix_iter_t>
     //!\endcond
     constexpr trace_iterator(trace_iterator<other_matrix_iter_t> other) noexcept :
-        trace_iterator{matrix_iter_t{std::move(other.matrix_iter)},
-                       column_index_type{other.pivot_column},
-                       other.legacy_iterator}
+        trace_iterator{matrix_iter_t{std::move(other.matrix_iter)}, column_index_type{other.pivot_column}}
     {}
 
     //!\}
@@ -167,7 +153,7 @@ public:
     {
         auto coord = matrix_iter.coordinate();
         // only correct the row coordinate if the current column is greater than the set upper_diagonal.
-        coord.row += (coord.col > pivot_column || legacy_iterator) * static_cast<int32_t>(coord.col - pivot_column);
+        coord.row += (coord.col > pivot_column) * static_cast<int32_t>(coord.col - pivot_column);
         return coord;
     }
     //!\}
@@ -264,7 +250,7 @@ private:
     {
         // Note, in the banded matrix, the columns are virtually shifted by one cell.
         // So going left means go to the previous column and then one row down.
-        int32_t row = coordinate().col > pivot_column || legacy_iterator;
+        int32_t row = coordinate().col > pivot_column;
         iter -= matrix_offset{row_index_type{-row}, column_index_type{1}};
     }
 
@@ -279,7 +265,7 @@ private:
     {
         // Note, in the banded matrix, the columns are virtually shifted by one cell.
         // So going diagonal means go to the previous column and stay in the same row.
-        int32_t row = coordinate().col <= pivot_column && !legacy_iterator;
+        int32_t row = coordinate().col <= pivot_column;
         iter -= matrix_offset{row_index_type{row}, column_index_type{1}};
     }
     //!\}
