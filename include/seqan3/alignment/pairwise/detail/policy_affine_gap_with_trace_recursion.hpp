@@ -73,14 +73,15 @@ protected:
         diagonal_score += sequence_score;
         score_type horizontal_score = previous_cell.horizontal_score();
         score_type vertical_score = previous_cell.vertical_score();
-        trace_directions best_trace = trace_directions::diagonal;
+        trace_type best_trace = this->maybe_convert_to_simd(trace_directions::diagonal);
 
-        diagonal_score = (diagonal_score < vertical_score)
-                       ? (best_trace = previous_cell.vertical_trace(), vertical_score)
-                       : (best_trace |= previous_cell.vertical_trace(), diagonal_score);
-        diagonal_score = (diagonal_score < horizontal_score)
-                       ? (best_trace = previous_cell.horizontal_trace(), horizontal_score)
-                       : (best_trace |= previous_cell.horizontal_trace(), diagonal_score);
+        auto cmp_mask = (diagonal_score < vertical_score);
+        diagonal_score = cmp_mask ? vertical_score : diagonal_score;
+        best_trace = cmp_mask ? previous_cell.vertical_trace() : (best_trace | previous_cell.vertical_trace());
+
+        cmp_mask = (diagonal_score < horizontal_score);
+        diagonal_score = cmp_mask ? horizontal_score : diagonal_score;
+        best_trace = cmp_mask ? previous_cell.horizontal_trace() : (best_trace | previous_cell.horizontal_trace());
 
         this->truncate_score_below_zero(diagonal_score, best_trace);
 
@@ -88,16 +89,15 @@ protected:
         vertical_score += gap_extension_score;
         horizontal_score += gap_extension_score;
 
-        // store the vertical_score and horizontal_score value in the next path
-        trace_directions next_vertical_trace = trace_directions::up;
-        trace_directions next_horizontal_trace = trace_directions::left;
+        cmp_mask = (vertical_score < tmp);
+        vertical_score = cmp_mask ? tmp : vertical_score;
+        trace_type next_vertical_trace = cmp_mask ? this->maybe_convert_to_simd(trace_directions::up_open)
+                                                  : this->maybe_convert_to_simd(trace_directions::up);
 
-        vertical_score = (vertical_score < tmp)
-                       ? (next_vertical_trace = trace_directions::up_open, tmp)
-                       : vertical_score;
-        horizontal_score = (horizontal_score < tmp)
-                         ? (next_horizontal_trace = trace_directions::left_open, tmp)
-                         : horizontal_score;
+        cmp_mask = (horizontal_score < tmp);
+        horizontal_score = cmp_mask ? tmp : horizontal_score;
+        trace_type next_horizontal_trace = cmp_mask ? this->maybe_convert_to_simd(trace_directions::left_open)
+                                                    : this->maybe_convert_to_simd(trace_directions::left);
 
         return {{diagonal_score, horizontal_score, vertical_score},
                 {best_trace, next_horizontal_trace, next_vertical_trace}};
@@ -107,9 +107,11 @@ protected:
     affine_cell_type initialise_origin_cell() const noexcept
     {
         return {base_t::initialise_origin_cell(),
-                {trace_directions::none,
-                 first_row_is_free ? trace_directions::none : trace_directions::left_open,
-                 first_column_is_free ? trace_directions::none : trace_directions::up_open}};
+                {this->maybe_convert_to_simd(trace_directions::none),
+                 first_row_is_free ? this->maybe_convert_to_simd(trace_directions::none)
+                                   : this->maybe_convert_to_simd(trace_directions::left_open),
+                 first_column_is_free ? this->maybe_convert_to_simd(trace_directions::none)
+                                      : this->maybe_convert_to_simd(trace_directions::up_open)}};
     }
 
     //!\copydoc seqan3::detail::policy_affine_gap_recursion::initialise_first_column_cell
@@ -118,8 +120,9 @@ protected:
     {
         return {base_t::initialise_first_column_cell(previous_cell),
                 {previous_cell.vertical_trace(),
-                 trace_directions::left_open,
-                 first_column_is_free ? trace_directions::none : trace_directions::up}};
+                 this->maybe_convert_to_simd(trace_directions::left_open),
+                 first_column_is_free ? this->maybe_convert_to_simd(trace_directions::none)
+                                      : this->maybe_convert_to_simd(trace_directions::up)}};
     }
 
     //!\copydoc seqan3::detail::policy_affine_gap_recursion::initialise_first_row_cell
@@ -128,8 +131,9 @@ protected:
     {
         return {base_t::initialise_first_row_cell(previous_cell),
                 {previous_cell.horizontal_trace(),
-                 first_row_is_free ? trace_directions::none : trace_directions::left,
-                 trace_directions::up_open}};
+                 first_row_is_free ? this->maybe_convert_to_simd(trace_directions::none)
+                                   : this->maybe_convert_to_simd(trace_directions::left),
+                 this->maybe_convert_to_simd(trace_directions::up_open)}};
     }
 };
 } // namespace seqan3::detail
