@@ -22,6 +22,7 @@
 #include <seqan3/alignment/matrix/trace_directions.hpp>
 #include <seqan3/core/concept/core_language.hpp>
 #include <seqan3/core/detail/template_inspection.hpp>
+#include <seqan3/core/simd/concept.hpp>
 #include <seqan3/range/container/aligned_allocator.hpp>
 #include <seqan3/range/views/repeat_n.hpp>
 #include <seqan3/range/views/zip.hpp>
@@ -49,7 +50,7 @@ namespace seqan3::detail
  */
 template <typename trace_t>
 //!\cond
-    requires std::same_as<trace_t, trace_directions>
+    requires (std::same_as<trace_t, trace_directions> || simd::simd_concept<trace_t>)
 //!\endcond
 class trace_matrix_full
 {
@@ -170,7 +171,7 @@ public:
  */
 template <typename trace_t>
 //!\cond
-    requires std::same_as<trace_t, trace_directions>
+    requires (std::same_as<trace_t, trace_directions> || simd::simd_concept<trace_t>)
 //!\endcond
 class trace_matrix_full<trace_t>::iterator
 {
@@ -288,7 +289,7 @@ public:
  */
 template <typename trace_t>
 //!\cond
-    requires std::same_as<trace_t, trace_directions>
+    requires (std::same_as<trace_t, trace_directions> || simd::simd_concept<trace_t>)
 //!\endcond
 class trace_matrix_full<trace_t>::iterator::column_proxy : public std::ranges::view_interface<column_proxy>
 {
