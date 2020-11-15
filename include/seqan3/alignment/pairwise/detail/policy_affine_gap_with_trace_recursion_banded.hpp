@@ -33,6 +33,7 @@ protected:
     using typename base_t::traits_type;
     using typename base_t::score_type;
     using typename base_t::affine_cell_type;
+    using typename base_t::trace_type;
 
     // Import base member.
     using base_t::gap_extension_score;
@@ -65,25 +66,25 @@ protected:
     {
         diagonal_score += sequence_score;
         score_type horizontal_score = previous_cell.horizontal_score();
-        trace_directions best_trace{};
+        trace_type best_trace{};
 
         best_trace = previous_cell.horizontal_trace();
-        diagonal_score = (diagonal_score < horizontal_score)
-                       ? horizontal_score
-                       : (best_trace |= trace_directions::diagonal, diagonal_score);
+        auto cmp_mask = (diagonal_score < horizontal_score);
+        diagonal_score = cmp_mask ? horizontal_score : diagonal_score;
+        best_trace = cmp_mask ? best_trace : best_trace | this->maybe_convert_to_simd(trace_directions::diagonal);
 
         this->truncate_score_below_zero(diagonal_score, best_trace);
 
         score_type from_optimal_score = diagonal_score + gap_open_score;
-        trace_directions next_horizontal_trace = trace_directions::left;
 
         horizontal_score += gap_extension_score;
-        horizontal_score = (horizontal_score < from_optimal_score)
-                         ? (next_horizontal_trace = trace_directions::left_open, from_optimal_score)
-                         : horizontal_score;
+        cmp_mask = (horizontal_score < from_optimal_score);
+        horizontal_score = cmp_mask ? from_optimal_score : horizontal_score;
+        trace_type next_horizontal_trace = cmp_mask ? this->maybe_convert_to_simd(trace_directions::left_open)
+                                                    : this->maybe_convert_to_simd(trace_directions::left);
 
         return {{diagonal_score, horizontal_score, from_optimal_score},
-                {best_trace, next_horizontal_trace, trace_directions::up_open}};
+                {best_trace, next_horizontal_trace, this->maybe_convert_to_simd(trace_directions::up_open)}};
     }
 };
 } // namespace seqan3::detail
