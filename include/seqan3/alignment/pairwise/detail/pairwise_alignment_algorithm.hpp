@@ -336,7 +336,7 @@ protected:
                 aligned_sequence_builder builder{std::forward<decltype(sequence1)>(sequence1),
                                                  std::forward<decltype(sequence2)>(sequence2)};
 
-                return builder(path_t{trace_iterator_t{trace_matrix_iter, column_index_type{upper_diagonal}, false},
+                return builder(path_t{trace_iterator_t{trace_matrix_iter, column_index_type{upper_diagonal}},
                                       std::default_sentinel});
             }
             else
