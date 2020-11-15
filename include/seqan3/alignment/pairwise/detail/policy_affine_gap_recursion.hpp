@@ -226,31 +226,38 @@ protected:
                (gap_open_score + gap_extension_score);
     }
 
-    /*!\brief Converts the given score type to a simd vector if the alignment is executed in vectorised mode.
+    /*!\brief Converts the given value type to a simd vector if the alignment is executed in vectorised mode.
      *
-     * \tparam score_t The score type to convert; must model seqan3::arithmetic.
-     * \param[in] score The score to convert.
+     * \tparam value_t The value type to convert; must model seqan3::arithmetic or seqan3::detail::trace_directions.
+     * \param[in] value The value to convert.
      *
      * \returns The score converted to the target simd vector or the unmodified value if in scalar mode.
      */
-    template <typename score_t>
+    template <typename value_t>
     //!\cond
-        requires arithmetic<std::remove_cvref_t<score_t>>
+        requires (arithmetic<std::remove_cvref_t<value_t>> ||
+                  std::same_as<std::remove_cvref_t<value_t>, trace_directions>)
     //!\endcond
-    constexpr auto maybe_convert_to_simd(score_t && score) const noexcept
+    constexpr auto maybe_convert_to_simd(value_t && value) const noexcept
     {
-        if constexpr (simd_concept<score_type>)
-            return simd::fill<score_type>(std::forward<score_t>(score));
+        if constexpr (simd::simd_concept<score_type>) // Is vectorised.
+        {
+            using scalar_t = typename simd_traits<score_type>::scalar_type;
+            return simd::fill<score_type>(static_cast<scalar_t>(std::forward<value_t>(value)));
+        }
         else // Return unmodified.
-            return std::forward<score_t>(score);
+        {
+            return std::forward<value_t>(value);
+        }
     }
 
     /*!\brief Sets the score to zero if it is negative in the local alignment.
      *
-     * \tparam trace_t The type of the trace direction.
+     * \tparam trace_t The type of the trace direction [optional]; must model seqan3::simd::simd_concept or must be of
+     *                 type seqan3::detail::trace_directions.
      *
-     * \param[in] score The score to be updated; maybe unused.
-     * \param[in] trace The trace to be updated; maybe unused.
+     * \param[in] score The score to be updated.
+     * \param[in] trace The trace to be updated [optional].
      *
      * \details
      *
@@ -261,13 +268,19 @@ protected:
      */
     template <typename ...trace_t>
     //!\cond
-        requires (std::same_as<trace_t, std::remove_cvref_t<trace_directions>> && ...)
+        requires (std::same_as<trace_t, std::remove_cvref_t<trace_directions>> && ...) ||
+                 (simd::simd_concept<trace_t> && ...)
     //!\endcond
     void truncate_score_below_zero([[maybe_unused]] score_type & score, [[maybe_unused]] trace_t & ...trace)
         const noexcept
     {
         if constexpr (traits_type::is_local)
-            score = (score < score_type{}) ? ((trace = trace_directions::none), ..., score_type{}) : score;
+        {
+            constexpr score_type zero_score{};
+            auto cmp_mask = (score < zero_score);
+            score = cmp_mask ? zero_score : score;
+            ((trace = cmp_mask ? maybe_convert_to_simd(trace_directions::none) : trace),...);
+        }
     }
 };
 } // namespace seqan3::detail
