@@ -31,11 +31,11 @@ struct trace_iterator_banded_test : public ::testing::Test
                                                                                     seqan3::detail::number_cols{6},
                                                                                     std::vector
     {  // emulating band {row:2, col:2}
-         N,  N,  L,  D,  D,  L,
-         N, LO,  D,  D, UO, UO,
-         N,  D,  D, LO,  D,  U,
-        UO,  D,  D,  D,  D,  N,
-         U,  D,  D,  D,  N,  N
+         N, LO,  L,  D,  D,  L,
+        UO,  D,  D,  D, UO, UO,
+         U,  D,  D, LO,  D,  U,
+         N,  D,  D,  D,  D,  N,
+         N,  N,  D,  D,  N,  N
     }};
             // Band view
         //   0  1  2  3  4  5
@@ -47,8 +47,7 @@ struct trace_iterator_banded_test : public ::testing::Test
         //5           D  D  U
 
     using trace_iterator_type = decltype(seqan3::detail::trace_iterator{matrix.begin(),
-                                                                        seqan3::detail::column_index_type{0},
-                                                                        true});
+                                                                        seqan3::detail::column_index_type{0}});
     using path_type = std::ranges::subrange<trace_iterator_type, std::default_sentinel_t>;
 
     path_type path(seqan3::detail::matrix_offset const & offset)
@@ -127,8 +126,7 @@ struct iterator_fixture<trace_iterator_banded_test> : public trace_iterator_band
 
     using iterator_type = typename base_t::trace_iterator_type;
     using const_iterator_type = decltype(seqan3::detail::trace_iterator{base_t::matrix.cbegin(),
-                                                                        seqan3::detail::column_index_type{0},
-                                                                        true});
+                                                                        seqan3::detail::column_index_type{0}});
 
     // Test forward iterator concept.
     using iterator_tag = std::forward_iterator_tag;
