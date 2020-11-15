@@ -17,6 +17,7 @@
 
 #include <seqan3/alignment/matrix/detail/aligned_sequence_builder.hpp>
 #include <seqan3/alignment/matrix/detail/trace_iterator.hpp>
+#include <seqan3/alignment/matrix/detail/trace_matrix_simd_adapter_iterator.hpp>
 #include <seqan3/alignment/pairwise/detail/type_traits.hpp>
 #include <seqan3/core/detail/empty_type.hpp>
 #include <seqan3/range/container/aligned_allocator.hpp>
@@ -265,7 +266,7 @@ protected:
                                          std::move(idx),
                                          std::move(score),
                                          std::move(coordinate),
-                                         alignment_builder(alignment_matrix),
+                                         alignment_builder(alignment_matrix, index),
                                          callback);
             ++index;
         }
@@ -276,6 +277,7 @@ protected:
      * \tparam alignment_matrix_t The type of the alignment matrix used to generate an aligned sequence builder for.
      *
      * \param[in] alignment_matrix The alignment matrix.
+     * \param[in] simd_lane The lane of the simd vector to generate the aligned sequences for.
      *
      * \returns Either an invocable around a seqan3::detail::aligned_sequence_builder.
      *
@@ -307,10 +309,10 @@ protected:
      *   computing additional trace information.
      */
     template <typename alignment_matrix_t>
-    auto alignment_builder([[maybe_unused]] alignment_matrix_t const & alignment_matrix)
+    auto alignment_builder([[maybe_unused]] alignment_matrix_t const & alignment_matrix, size_t const simd_lane = 0)
     {
         // Return a callable that can be invoked by the sequence builder.
-        return [&] (auto && sequence1, auto && sequence2, auto coordinate)
+        return [&, simd_lane] (auto && sequence1, auto && sequence2, auto coordinate)
         {
             // clip upper_diagonal
             int32_t upper_diagonal = std::clamp<int32_t>(this->upper_diagonal, 0, std::ranges::distance(sequence1));
@@ -329,14 +331,27 @@ protected:
                 auto trace_matrix_iter = alignment_matrix.matrix_iterator_at(coordinate);
 
                 using matrix_iter_t = decltype(trace_matrix_iter);
-                using trace_iterator_t = trace_iterator<matrix_iter_t>;
+                using matrix_iter_adapter_t =
+                    lazy_conditional_t<traits_type::is_vectorised,
+                                       lazy<trace_matrix_simd_adapter_iterator, matrix_iter_t>,
+                                       matrix_iter_t>;
+                using trace_iterator_t = trace_iterator<matrix_iter_adapter_t>;
                 using path_t = std::ranges::subrange<trace_iterator_t, std::default_sentinel_t>;
 
                 // Create the builder and return the generated alignment.
                 aligned_sequence_builder builder{std::forward<decltype(sequence1)>(sequence1),
                                                  std::forward<decltype(sequence2)>(sequence2)};
 
-                return builder(path_t{trace_iterator_t{trace_matrix_iter, column_index_type{upper_diagonal}},
+                auto get_adapter_iter = [&] (auto iter)
+                {
+                    if constexpr (traits_type::is_vectorised)
+                        return matrix_iter_adapter_t{std::move(iter), simd_lane};
+                    else
+                        return iter;
+                };
+
+                return builder(path_t{trace_iterator_t{get_adapter_iter(std::move(trace_matrix_iter)),
+                                                       column_index_type{upper_diagonal}},
                                       std::default_sentinel});
             }
             else
