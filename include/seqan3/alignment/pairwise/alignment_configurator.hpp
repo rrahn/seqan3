@@ -473,7 +473,7 @@ private:
         //----------------------------------------------------------------------------------------------------------
 
         using score_matrix_t = score_matrix_single_column<score_t>;
-        using trace_matrix_t = trace_matrix_full<trace_directions>;
+        using trace_matrix_t = trace_matrix_full<typename traits_t::trace_type>;
 
         using alignment_matrix_t = std::conditional_t<traits_t::requires_trace_information,
                                                       combined_score_and_trace_matrix<score_matrix_t,
