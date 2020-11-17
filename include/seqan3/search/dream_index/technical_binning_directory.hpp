@@ -212,6 +212,8 @@ public:
 
     //!\cond
     // Constructor for IBF App...
+    // I need to construct an empty TBD for serialisation.
+    // I need to provide the config (do I?) and the hash_adaptor(not serialisable), but can ignore the technical_bins.
     template <std::ranges::range rng_t>
         requires (data_layout_mode == data_layout::uncompressed)
     technical_binning_directory(rng_t && technical_bins,
