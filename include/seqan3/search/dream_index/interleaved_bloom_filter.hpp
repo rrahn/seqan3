@@ -692,6 +692,16 @@ public:
         return *this;
     }
 
+    /*!\brief Bin-wise addition of two counting_vector.
+     * \param rhs The other counting_vector.
+     * \attention The counting_vector must be at least as big as `rhs`.
+     *
+     * \details
+     *
+     * ### Example
+     *
+     * \include test/snippet/search/dream_index/counting_vector.cpp
+     */
     counting_vector & operator+=(counting_vector const & rhs)
     {
         assert(this->size() >= rhs.size()); // The counting vector may be bigger than what we need.

@@ -34,7 +34,7 @@ struct ibf_config
     bin_count number_of_bins; //!< The number of bins.
     bin_size size_of_bin; //!< The size of each individual bin.
     hash_function_count number_of_hash_functions; //!< The number of hash functions.
-    uint8_t threads;
+    uint8_t threads{1u}; //!< The number of threads to use functions.
 };
 
 /*!\brief The Technical Binning Directory. A data structure that enhances the seqan3::interleaved_bloom_filter by
@@ -115,10 +115,10 @@ public:
 
 
     /*!\brief Construct an uncompressed Technical Binning Directory.
-     * \tparam rng_t The type of the technical bins. Must be two dimensional,
-     * \param technical_bins The number of bins.
-     * \param size The bitvector size.
-     * \param funs The number of hash functions. Default 2. At least 1, at most 5.
+     * \tparam rng_t The type of the technical bins.
+     * \param technical_bins The technical bins.
+     * \param hash_adaptor A hash adaptor determining how to hash the input sequences.
+     * \param cfg A seqan3::ibf_config.
      *
      * \attention This constructor can only be used to construct **uncompressed** Technical Binning Directories.
      *
@@ -126,7 +126,7 @@ public:
      *
      * ### Example
      *
-     * \include test/snippet/search/dream_index/technical_binning_directory_constructor.cpp
+     * \include test/snippet/search/dream_index/technical_binning_directory.cpp
      */
     template <std::ranges::range rng_t>
     //!\cond
@@ -149,8 +149,9 @@ public:
         size_t const number_of_bins = cfg.number_of_bins.get();
 
         using rng_difference_t = std::ranges::range_difference_t<rng_t>;
-        if (std::ranges::distance(technical_bins) < static_cast<rng_difference_t>(number_of_bins))
-            throw std::logic_error("Not enough bins.");
+        if (std::ranges::distance(technical_bins) > static_cast<rng_difference_t>(number_of_bins))
+            throw std::logic_error("There are more bins in the input data set than "
+                                   "the binning directory is configured to handle.");
 
         auto worker = [&] (auto && zipped_view, auto &&)
         {
@@ -229,7 +230,7 @@ public:
     //!\endcond
 
     /*!\brief Construct a compressed Technical Binning Directory.
-     * \param[in] ibf The uncompressed seqan3::technical_binning_directory.
+     * \param[in] tbd The uncompressed seqan3::technical_binning_directory.
      *
      * \attention This constructor can only be used to construct **compressed** Technical Binning Directorys.
      *
@@ -237,7 +238,7 @@ public:
      *
      * ### Example
      *
-     * \include test/snippet/search/dream_index/technical_binning_directory_constructor_compressed.cpp
+     * \include test/snippet/search/dream_index/technical_binning_directory.cpp
      */
     technical_binning_directory(technical_binning_directory<data_layout::uncompressed,
                                                             hash_adaptor_t,
@@ -259,7 +260,7 @@ public:
      *
      * ### Example
      *
-     * \include test/snippet/search/dream_index/counting_agent_type_constructor.cpp
+     * \include test/snippet/search/dream_index/counting_agent.cpp
      * \sa seqan3::technical_binning_directory::counting_agent_type::bulk_contains
      */
     template <std::integral value_t = size_t>
@@ -286,7 +287,7 @@ technical_binning_directory(rng_t, hash_adaptor_t, ibf_config) ->
  *
  * ### Example
  *
- * \include test/snippet/search/dream_index/counting_agent_type_constructor.cpp
+ * \include test/snippet/search/dream_index/counting_agent.cpp
  */
 template <data_layout data_layout_mode, typename hash_adaptor_t, semialphabet alph_t>
 template <std::integral value_t>
@@ -315,7 +316,7 @@ public:
 
     /*!\brief Construct a counting_agent_type for an existing seqan3::technical_binning_directory.
      * \private
-     * \param ibf The seqan3::technical_binning_directory.
+     * \param tbd The seqan3::technical_binning_directory.
      */
     counting_agent_type(tbd_t const & tbd) : tbd_ptr(std::addressof(tbd)), membership_agent(tbd)
     {
@@ -329,8 +330,8 @@ public:
     /*!\name Counting
      * \{
      */
-    /*!\brief Determines set membership of a given value.
-     * \param[in] value The raw value to process.
+    /*!\brief Determines set membership of a given query.
+     * \param[in] query The sequence to process.
      *
      * \attention The result of this function must always be bound via reference, e.g. `auto &` to prevent copying.
      * \attention Sequential calls to this function invalidate the previously returned reference.
@@ -339,7 +340,7 @@ public:
      *
      * ### Example
      *
-     * \include test/snippet/search/dream_index/counting_agent_type_bulk_contains.cpp
+     * \include test/snippet/search/dream_index/counting_agent.cpp
      *
      * ### Thread safety
      *
@@ -364,9 +365,24 @@ public:
         return result_buffer;
     }
 
-    // Also return counts
+    /*!\brief Determines set membership of a given query and counts number of searched hashes.
+     * \param[in] query The sequence to process.
+     *
+     * \attention The result of this function must always be bound via reference, e.g. `auto &` to prevent copying.
+     * \attention Sequential calls to this function invalidate the previously returned reference.
+     *
+     * \details
+     *
+     * ### Example
+     *
+     * \include test/snippet/search/dream_index/counting_agent.cpp
+     *
+     * ### Thread safety
+     *
+     * Concurrent invocations of this function are not thread safe, please create a seqan3::counting_agent_type for each thread.
+     */
     template <std::ranges::range query_t>
-    std::pair<counting_vector<value_t> const &, value_t const> count_query(query_t const & query, bool) & noexcept
+    std::pair<counting_vector<value_t> const &, value_t const> count_query(query_t const & query, bool) & noexcept // TODO no second parameter please
     {
         assert(tbd_ptr != nullptr);
         assert(result_buffer.size() == tbd_ptr->bin_count());
