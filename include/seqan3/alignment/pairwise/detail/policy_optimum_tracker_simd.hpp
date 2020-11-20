@@ -120,7 +120,7 @@ protected:
     static_assert(simd_concept<score_type>, "Must be a simd type!");
 
     // Import base variables into class scope.
-    using base_policy_t::compare_and_set_optimum;
+    // using base_policy_t::compare_and_set_optimum;
     using base_policy_t::optimal_score;
     using base_policy_t::optimal_coordinate;
     //!\brief The individual offsets used for padding the sequences.

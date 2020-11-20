@@ -22,6 +22,7 @@
 #include <seqan3/range/views/get.hpp>
 #include <seqan3/range/views/take.hpp>
 #include <seqan3/utility/detail/type_name_as_string.hpp>
+#include <seqan3/utility/type_pack/traits.hpp>
 
 namespace seqan3::detail
 {
@@ -33,6 +34,199 @@ struct algorithm_traits
     using original_score_type = original_score_t;
     using alignment_result_type = result_t;
     static constexpr bool is_vectorised = simd_concept<score_type>;
+};
+
+template <typename recursion_policy_t, typename scoring_policy_t, typename tracker_policy_t>
+class core_algorithm : public recursion_policy_t,
+                       public scoring_policy_t,
+                       public tracker_policy_t
+{
+public:
+
+    core_algorithm() = default; // We need to initialise the base classes.
+    core_algorithm(recursion_policy_t const & recursion_policy,
+                   scoring_policy_t const & scoring_policy,
+                   tracker_policy_t const & tracker_policy) :
+        recursion_policy_t{recursion_policy},
+        scoring_policy_t{scoring_policy},
+        tracker_policy_t{tracker_policy}
+    {}
+
+    auto const & score() const
+    {
+        return this->optimal_score;
+    }
+
+    auto const & coordinate() const
+    {
+        return this->optimal_coordinate;
+    }
+
+    auto const & offsets() const
+    {
+        return this->padding_offsets;
+    }
+
+    template <typename seq1_t, typename seq2_t>
+    void initialise(seq1_t && seq1, seq2_t && seq2)
+    {
+        this->initialise_tracker(seq1, seq2);
+    }
+
+    template <std::ranges::forward_range sequence1_t,
+            std::ranges::forward_range sequence2_t,
+            std::ranges::input_range alignment_matrix_t,
+            std::ranges::input_range index_matrix_t>
+    //!\cond
+        requires std::ranges::forward_range<std::ranges::range_reference_t<alignment_matrix_t>> &&
+                 std::ranges::forward_range<std::ranges::range_reference_t<index_matrix_t>>
+    //!\endcond
+    void compute_matrix(sequence1_t && sequence1,
+                        sequence2_t && sequence2,
+                        alignment_matrix_t && alignment_matrix,
+                        index_matrix_t && index_matrix)
+    {
+        // ---------------------------------------------------------------------
+        // Initialisation phase: allocate memory and initialise first column.
+        // ---------------------------------------------------------------------
+
+        this->reset_optimum(); // Reset the tracker for the new alignment computation.
+
+        auto alignment_matrix_it = alignment_matrix.begin();
+        auto indexed_matrix_it = index_matrix.begin();
+
+        initialise_column(*alignment_matrix_it, *indexed_matrix_it, sequence2);
+
+        // ---------------------------------------------------------------------
+        // Iteration phase: compute column-wise the alignment matrix.
+        // ---------------------------------------------------------------------
+
+        for (auto alphabet1 : sequence1)
+            compute_column(*++alignment_matrix_it,
+                           *++indexed_matrix_it,
+                           this->scoring_scheme_profile_column(alphabet1),
+                           sequence2);
+
+        // ---------------------------------------------------------------------
+        // Final phase: track score of last column
+        // ---------------------------------------------------------------------
+
+        auto && alignment_column = *alignment_matrix_it;
+        auto && cell_index_column = *indexed_matrix_it;
+
+        auto alignment_column_it = alignment_column.begin();
+        auto cell_index_column_it = cell_index_column.begin();
+
+        this->track_last_column_cell(*alignment_column_it, *cell_index_column_it);
+
+        for ([[maybe_unused]] auto && unused : sequence2)
+            this->track_last_column_cell(*++alignment_column_it, *++cell_index_column_it);
+
+        this->track_final_cell(*alignment_column_it, *cell_index_column_it);
+    }
+
+    /*!\brief Initialise the first column of the alignment matrix.
+     * \tparam alignment_column_t The type of the alignment column; must model std::ranges::forward_range.
+     * \tparam cell_index_column_t The type of the indexed column; must model std::ranges::forward_range.
+     * \tparam sequence2_t The type of the second sequence; must model std::ranges::forward_range.
+     *
+     * \param[in] alignment_column The current alignment matrix column to compute.
+     * \param[in] cell_index_column The current index matrix column to get the respective cell indices.
+     * \param[in] sequence2 The second sequence used to determine the size of the column.
+     *
+     * \details
+     *
+     * The first column of the alignment matrix does not require any character comparisons of the sequences that
+     * shall be aligned. The second sequence is thus only needed to determine the size of the column.
+     * The computation of the column is split into three phases: the initialisation phase, the iteration phase, and
+     * the final phase. In the initialisation phase the first cell of the column is computed and in the iteration
+     * phase all remaining cells are computed. In the final phase the last cell is possibly evaluated for a new
+     * alignment optimum.
+     */
+    template <std::ranges::forward_range alignment_column_t,
+              std::ranges::forward_range cell_index_column_t,
+              std::ranges::forward_range sequence2_t>
+    void initialise_column(alignment_column_t && alignment_column,
+                           cell_index_column_t && cell_index_column,
+                           sequence2_t && sequence2)
+    {
+        // ---------------------------------------------------------------------
+        // Initial phase: prepare column and initialise first cell
+        // ---------------------------------------------------------------------
+
+        auto first_column_it = alignment_column.begin();
+        auto cell_index_column_it = cell_index_column.begin();
+        *first_column_it = this->track_cell(this->initialise_origin_cell(), *cell_index_column_it);
+
+        // ---------------------------------------------------------------------
+        // Iteration phase: iterate over column and compute each cell
+        // ---------------------------------------------------------------------
+
+        for ([[maybe_unused]] auto const & unused : sequence2)
+        {
+            ++first_column_it;
+            *first_column_it = this->track_cell(this->initialise_first_column_cell(*first_column_it),
+                                                *++cell_index_column_it);
+        }
+
+        // ---------------------------------------------------------------------
+        // Final phase: track last cell of initial column
+        // ---------------------------------------------------------------------
+
+        this->track_last_row_cell(*first_column_it, *cell_index_column_it);
+
+        // this->log_alignment_matrix_column(cell_index_column, alignment_column
+        //                                                    | views::take(std::ranges::distance(sequence2)+ 1));
+    }
+
+    template <std::ranges::forward_range alignment_column_t,
+              std::ranges::forward_range cell_index_column_t,
+              typename alphabet1_t,
+              std::ranges::forward_range sequence2_t>
+    //!\cond
+        requires semialphabet<alphabet1_t> || simd_concept<alphabet1_t>
+    //!\endcond
+    void compute_column(alignment_column_t && alignment_column,
+                        cell_index_column_t && cell_index_column,
+                        alphabet1_t const & alphabet1,
+                        sequence2_t && sequence2)
+    {
+        // using score_type = typename traits_type::score_type;
+
+        // ---------------------------------------------------------------------
+        // Initial phase: prepare column and initialise first cell
+        // ---------------------------------------------------------------------
+
+        auto alignment_column_it = alignment_column.begin();
+        auto cell_index_column_it = cell_index_column.begin();
+
+        auto cell = *alignment_column_it;
+        auto diagonal = cell.best_score();
+        *alignment_column_it = this->track_cell(this->initialise_first_row_cell(cell), *cell_index_column_it);
+
+        // ---------------------------------------------------------------------
+        // Iteration phase: iterate over column and compute each cell
+        // ---------------------------------------------------------------------
+
+        for (auto const & alphabet2 : sequence2)
+        {
+            auto cell = *++alignment_column_it;
+            auto next_diagonal = cell.best_score();
+            *alignment_column_it = this->track_cell(
+                this->compute_inner_cell(diagonal, cell, this->scoring_scheme.score(alphabet1, alphabet2)),
+                *++cell_index_column_it);
+            diagonal = next_diagonal;
+        }
+
+        // ---------------------------------------------------------------------
+        // Final phase: track last cell
+        // ---------------------------------------------------------------------
+
+        this->track_last_row_cell(*alignment_column_it, *cell_index_column_it);
+
+        // this->log_alignment_matrix_column(cell_index_column, alignment_column
+        //                                                    | views::take(std::ranges::distance(sequence2) + 1));
+    }
 };
 
 /*!\brief The alignment algorithm type to compute standard pairwise alignment using dynamic programming.
@@ -61,6 +255,10 @@ protected:
     using alignment_result_type = typename traits_type::alignment_result_type;
 
     static_assert(!std::same_as<alignment_result_type, empty_type>, "Alignment result type was not configured.");
+
+    using core_t = core_algorithm<pack_traits::at<0, policies_t...>,
+                                  pack_traits::at<1, policies_t...>,
+                                  pack_traits::at<2, policies_t...>>;
 
 public:
     /*!\name Constructors, destructor and assignment
@@ -149,13 +347,14 @@ public:
             auto && [alignment_matrix, index_matrix] = this->acquire_matrices(sequence1_size, sequence2_size);
 
             this->initialise_debug_matrices(sequence1_size, sequence2_size);
+            static thread_local core_t kernel{*this, *this, *this};
+            kernel.compute_matrix(get<0>(sequence_pair), get<1>(sequence_pair), alignment_matrix, index_matrix);
 
-            compute_matrix(get<0>(sequence_pair), get<1>(sequence_pair), alignment_matrix, index_matrix);
             this->make_result_and_invoke(*this,
                                          std::forward<decltype(sequence_pair)>(sequence_pair),
                                          std::move(idx),
-                                         this->optimal_score,
-                                         this->optimal_coordinate,
+                                         kernel.score(),
+                                         kernel.coordinate(),
                                          trace_path_builder(alignment_matrix),
                                          callback);
         }
@@ -169,16 +368,18 @@ public:
     //!\endcond
     auto operator()(indexed_sequence_pairs_t && indexed_sequence_pairs, callback_t && callback)
     {
-        auto && [simd_seq1_collection, simd_seq2_collection] = preprocess_sequences(indexed_sequence_pairs);
+        core_t kernel{*this, *this, *this};
+        auto && [simd_seq1_collection, simd_seq2_collection] = preprocess_sequences(indexed_sequence_pairs, kernel);
 
         auto && [alignment_matrix, index_matrix] = this->acquire_matrices(simd_seq1_collection.size(),
                                                                           simd_seq2_collection.size());
 
-        compute_matrix(simd_seq1_collection, simd_seq2_collection, alignment_matrix, index_matrix);
+        kernel.compute_matrix(simd_seq1_collection, simd_seq2_collection, alignment_matrix, index_matrix);
 
         postprocess_result(std::forward<indexed_sequence_pairs_t>(indexed_sequence_pairs),
                            alignment_matrix,
-                           std::forward<callback_t>(callback));
+                           std::forward<callback_t>(callback),
+                           kernel);
     }
 
 protected:
@@ -199,8 +400,8 @@ protected:
      *
      * \throws std::bad_alloc if the allocation of the simd vectors exceeds the available memory.
      */
-    template <indexed_sequence_pair_range indexed_sequence_pairs_t>
-    auto preprocess_sequences(indexed_sequence_pairs_t && indexed_sequence_pairs)
+    template <indexed_sequence_pair_range indexed_sequence_pairs_t, typename kernel_t>
+    auto preprocess_sequences(indexed_sequence_pairs_t && indexed_sequence_pairs, kernel_t & kernel)
     {
         static_assert(traits_type::is_vectorised, "This preprocess function is only callable in vectorisation mode.");
 
@@ -210,7 +411,7 @@ protected:
         auto seq1_collection = indexed_sequence_pairs | views::get<0> | views::get<0>;
         auto seq2_collection = indexed_sequence_pairs | views::get<0> | views::get<1>;
 
-        this->initialise_tracker(seq1_collection, seq2_collection);
+        kernel.initialise(seq1_collection, seq2_collection);
 
         // Convert batch of sequences to sequence of simd vectors.
         thread_local simd_collection_t simd_seq1_collection{};
@@ -244,10 +445,11 @@ protected:
      * Subsequently, the alignment result builder is invoked with the respective values to construct the alignment
      * result and invoke the callable with the new result.
      */
-    template <indexed_sequence_pair_range indexed_sequence_pairs_t, typename alignment_matrix_t, typename callback_t>
+    template <indexed_sequence_pair_range indexed_sequence_pairs_t, typename alignment_matrix_t, typename callback_t, typename kernel_t>
     void postprocess_result(indexed_sequence_pairs_t && indexed_sequence_pairs,
                             alignment_matrix_t && alignment_matrix,
-                            callback_t && callback)
+                            callback_t && callback,
+                            kernel_t const & kernel)
     {
         static_assert(traits_type::is_vectorised, "This preprocess function is only callable in vectorisation mode.");
         // Check that the sequence collection and the length of the vector have indeed the same size.
@@ -258,12 +460,12 @@ protected:
         size_t index = 0;
         for (auto && [sequence_pair, idx] : indexed_sequence_pairs)
         {
-            original_score_t const padding_offset = this->padding_offsets[index];
-            original_score_t score = this->optimal_score[index] -
+            original_score_t const padding_offset{}; // = kernel.offsets()[index];
+            original_score_t score = kernel.score()[index] -
                                      (padding_offset * this->scoring_scheme.padding_match_score());
             matrix_coordinate coordinate{
-                row_index_type{static_cast<size_t>(this->optimal_coordinate.row[index] - padding_offset)},
-                column_index_type{static_cast<size_t>(this->optimal_coordinate.col[index] - padding_offset)}
+                row_index_type{static_cast<size_t>(kernel.coordinate().row[index] - padding_offset)},
+                column_index_type{static_cast<size_t>(kernel.coordinate().col[index] - padding_offset)}
             };
 
             this->make_result_and_invoke(*this,

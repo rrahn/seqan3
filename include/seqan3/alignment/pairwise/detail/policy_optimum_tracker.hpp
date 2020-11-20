@@ -196,7 +196,7 @@ template <typename traits_type, std::semiregular optimum_updater_t>
                             typename traits_type::score_type,
                             typename traits_type::matrix_coordinate_type>
 //!\endcond
-class policy_optimum_tracker
+class policy_optimum_tracker : optimum_updater_t
 {
 protected:
     //!\brief The configured score type.
@@ -204,12 +204,12 @@ protected:
     //!\brief The matrix coordinate type that is used to locate a cell inside of the alignment matrix.
     using matrix_coordinate_type = typename traits_type::matrix_coordinate_type;
 
-    //!\brief The tracked score of the global optimum.
-    score_type optimal_score{};
     //!\brief The matrix coordinate of the tracked optimum.
     matrix_coordinate_type optimal_coordinate{};
+    //!\brief The tracked score of the global optimum.
+    score_type optimal_score{};
     //!\brief The function object to compare and exchange the optimum.
-    optimum_updater_t compare_and_set_optimum{};
+    // optimum_updater_t compare_and_set_optimum{};
 
     //!\brief Whether every cell of the alignment matrix shall be tracked.
     bool test_every_cell{false};
@@ -357,7 +357,7 @@ protected:
     template <typename cell_t>
     void invoke_comparator(cell_t && cell, matrix_coordinate_type coordinate) noexcept
     {
-        compare_and_set_optimum(optimal_score, optimal_coordinate, cell.best_score(), std::move(coordinate));
+        static_cast<optimum_updater_t &>(*this)(optimal_score, optimal_coordinate, cell.best_score(), std::move(coordinate));
     }
 
     template <std::integral row_index_t, std::integral column_index_t>
@@ -365,7 +365,7 @@ protected:
                             [[maybe_unused]] column_index_type<column_index_t> const column_dimension) noexcept
     {
         if constexpr (std::same_as<optimum_updater_t, max_score_banded_updater>)
-            compare_and_set_optimum.set_target_indices(row_dimension, column_dimension);
+            this->set_target_indices(row_dimension, column_dimension);
     }
 };
 } // namespace seqan3::detail
