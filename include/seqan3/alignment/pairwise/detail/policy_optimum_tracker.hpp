@@ -336,6 +336,24 @@ protected:
         if (!(test_every_cell || test_last_row_cell || test_last_column_cell))
             invoke_comparator(cell, std::move(coordinate));
     }
+
+    template <typename alignment_col_t, typename index_col_t, typename u1, typename u2>
+    decltype(auto) track_column(alignment_col_t && score_col, index_col_t && index_col, u1 it1, u2 it2) noexcept
+    {
+        if (test_every_cell)
+        {
+            auto col_it = score_col.begin();
+            auto idx_it = index_col.begin();
+
+            for (; col_it != score_col.end(); ++col_it, ++idx_it)
+                invoke_comparator(*col_it, *idx_it);
+        }
+        else if (test_last_row_cell)
+        {
+            invoke_comparator(*it1, *it2);
+        }
+    }
+
     //!\brief Resets the optimum such that a new alignment can be computed.
     void reset_optimum() noexcept
     {

@@ -39,6 +39,7 @@ class counted_simd_iterator
 private:
     //!\brief The currently represented count.
     index_simd_t count_simd{};
+    size_t index{};
 
 public:
     /*!\name Associated types
@@ -53,7 +54,7 @@ public:
     //!\brief The difference type.
     using difference_type = std::ptrdiff_t;
     //!\brief The iterator category.
-    using iterator_category = std::forward_iterator_tag;
+    using iterator_category = std::random_access_iterator_tag;
     //!\}
 
     /*!\name Constructor, assignment and destructor
@@ -74,7 +75,8 @@ public:
      */
     template <arithmetic index_scalar_t>
     explicit counted_simd_iterator(index_scalar_t const scalar_index) noexcept :
-        count_simd{simd::fill<index_simd_t>(scalar_index)}
+        count_simd{simd::fill<index_simd_t>(scalar_index)},
+        index{scalar_index}
     {}
     //!\}
 
@@ -87,6 +89,12 @@ public:
     {
         return count_simd;
     }
+
+    //!\brief Return the current simd index.
+    reference operator[](difference_type jump) const
+    {
+        return *(*this + jump);
+    }
     //!\}
 
     /*!\name Arithmetic operators
@@ -96,6 +104,7 @@ public:
     //!\brief Increments the iterator.
     counted_simd_iterator & operator++()
     {
+        ++index;
         count_simd += seqan3::simd::fill<index_simd_t>(1);
         return *this;
     }
@@ -108,10 +117,58 @@ public:
         return tmp;
     }
 
+    //!\brief Increments the iterator.
+    counted_simd_iterator & operator+=(difference_type const jump)
+    {
+        index += jump;
+        count_simd = seqan3::simd::fill<index_simd_t>(index);
+        return *this;
+    }
+
+    //!\brief Increments the iterator.
+    counted_simd_iterator operator+(difference_type const jump) const
+    {
+        return counted_simd_iterator{index + jump};
+    }
+
+    //!\brief Increments the iterator.
+    friend counted_simd_iterator operator+(difference_type const jump, counted_simd_iterator const it) noexcept
+    {
+        return it + jump;
+    }
+
+    //!\brief Increments the iterator.
+    counted_simd_iterator & operator--()
+    {
+        --index;
+        count_simd -= seqan3::simd::fill<index_simd_t>(1);
+        return *this;
+    }
+
+    //!\brief Increments the iterator and returns the iterator pointing to the previous index.
+    counted_simd_iterator operator--(int)
+    {
+        counted_simd_iterator tmp{*this};
+        --(*this);
+        return tmp;
+    }
+
+    //!\brief Returns the distance between two iterators.
+    counted_simd_iterator & operator-=(difference_type const jump)
+    {
+        return *this += -jump;
+    }
+
+    //!\brief Returns the distance between two iterators.
+    counted_simd_iterator operator-(difference_type const jump) const
+    {
+        return *this + -jump;
+    }
+
     //!\brief Returns the distance between two iterators.
     difference_type operator-(counted_simd_iterator const & rhs) const
     {
-        return count_simd[0] - rhs.count_simd[0];
+        return index - rhs.index;
     }
     //!\}
 
@@ -122,13 +179,37 @@ public:
     //!\brief Tests whether `lhs == rhs`.
     friend bool operator==(counted_simd_iterator const & lhs, counted_simd_iterator const & rhs) noexcept
     {
-        return lhs.count_simd[0] == rhs.count_simd[0];
+        return lhs.index == rhs.index;
     }
 
     //!\brief Tests whether `lhs != rhs`.
     friend bool operator!=(counted_simd_iterator const & lhs, counted_simd_iterator const & rhs) noexcept
     {
         return !(lhs == rhs);
+    }
+
+    //!\brief Tests whether `lhs == rhs`.
+    friend bool operator<(counted_simd_iterator const & lhs, counted_simd_iterator const & rhs) noexcept
+    {
+        return lhs.index < rhs.index;
+    }
+
+    //!\brief Tests whether `lhs != rhs`.
+    friend bool operator<=(counted_simd_iterator const & lhs, counted_simd_iterator const & rhs) noexcept
+    {
+        return lhs.index <= rhs.index;
+    }
+
+    //!\brief Tests whether `lhs == rhs`.
+    friend bool operator>(counted_simd_iterator const & lhs, counted_simd_iterator const & rhs) noexcept
+    {
+        return lhs.index > rhs.index;
+    }
+
+    //!\brief Tests whether `lhs != rhs`.
+    friend bool operator>=(counted_simd_iterator const & lhs, counted_simd_iterator const & rhs) noexcept
+    {
+        return lhs.index >= rhs.index;
     }
     //!\}
 };

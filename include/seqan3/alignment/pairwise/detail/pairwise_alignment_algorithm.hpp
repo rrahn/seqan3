@@ -198,11 +198,11 @@ public:
         // ---------------------------------------------------------------------
 
         auto alignment_column_it = alignment_column.begin();
-        auto cell_index_column_it = cell_index_column.begin();
 
         auto cell = *alignment_column_it;
         auto diagonal = cell.best_score();
-        *alignment_column_it = this->track_cell(this->initialise_first_row_cell(cell), *cell_index_column_it);
+        *alignment_column_it = this->initialise_first_row_cell(cell);
+        // *alignment_column_it = this->track_cell(this->initialise_first_row_cell(cell), *cell_index_column_it);
 
         // ---------------------------------------------------------------------
         // Iteration phase: iterate over column and compute each cell
@@ -212,17 +212,22 @@ public:
         {
             auto cell = *++alignment_column_it;
             auto next_diagonal = cell.best_score();
-            *alignment_column_it = this->track_cell(
-                this->compute_inner_cell(diagonal, cell, this->scoring_scheme.score(alphabet1, alphabet2)),
-                *++cell_index_column_it);
+            *alignment_column_it = this->compute_inner_cell(diagonal, cell, this->scoring_scheme.score(alphabet1, alphabet2));
+            // *alignment_column_it = this->track_cell(
+            //     this->compute_inner_cell(diagonal, cell, this->scoring_scheme.score(alphabet1, alphabet2)),
+            //     *++cell_index_column_it);
             diagonal = next_diagonal;
+            // ++cell_index_column_it;
         }
 
         // ---------------------------------------------------------------------
         // Final phase: track last cell
         // ---------------------------------------------------------------------
 
-        this->track_last_row_cell(*alignment_column_it, *cell_index_column_it);
+        // Track column:
+        this->track_column(alignment_column, cell_index_column, alignment_column_it, cell_index_column.begin() + std::ranges::distance(sequence2));
+
+        // this->track_last_row_cell(*alignment_column_it, *cell_index_column_it);
 
         // this->log_alignment_matrix_column(cell_index_column, alignment_column
         //                                                    | views::take(std::ranges::distance(sequence2) + 1));
@@ -460,7 +465,7 @@ protected:
         size_t index = 0;
         for (auto && [sequence_pair, idx] : indexed_sequence_pairs)
         {
-            original_score_t const padding_offset{}; // = kernel.offsets()[index];
+            original_score_t const padding_offset = kernel.offsets()[index];
             original_score_t score = kernel.score()[index] -
                                      (padding_offset * this->scoring_scheme.padding_match_score());
             matrix_coordinate coordinate{

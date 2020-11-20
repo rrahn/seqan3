@@ -56,11 +56,11 @@ SEQAN3_CONCEPT tracedirections_or_simd = std::same_as<remove_cvref_t<t>, trace_d
  */
 //!\cond
 template <typename t>
-SEQAN3_CONCEPT affine_score_cell = tuple_like<t> &&
-                                   std::tuple_size_v<t> == 3 &&
-                                   arithmetic_or_simd<std::remove_reference_t<std::tuple_element_t<0, t>>> &&
-                                   arithmetic_or_simd<std::remove_reference_t<std::tuple_element_t<1, t>>> &&
-                                   arithmetic_or_simd<std::remove_reference_t<std::tuple_element_t<2, t>>>;
+SEQAN3_CONCEPT affine_score_cell = tuple_like<t>; // &&
+                                //    std::tuple_size_v<t> == 3 &&
+                                //    arithmetic_or_simd<std::remove_reference_t<std::tuple_element_t<0, t>>> &&
+                                //    arithmetic_or_simd<std::remove_reference_t<std::tuple_element_t<1, t>>> &&
+                                //    arithmetic_or_simd<std::remove_reference_t<std::tuple_element_t<2, t>>>;
 //!\endcond
 
 /*!\interface seqan3::detail::affine_trace_cell <>
@@ -116,7 +116,7 @@ SEQAN3_CONCEPT affine_score_and_trace_cell = tuple_like<t> &&
  */
 template <typename tuple_t>
 //!\cond
-    requires (affine_score_cell<tuple_t> || affine_score_and_trace_cell<tuple_t>)
+    // requires (affine_score_cell<tuple_t> || affine_score_and_trace_cell<tuple_t>)
 //!\endcond
 class affine_cell_proxy : public tuple_t
 {
@@ -372,7 +372,12 @@ private:
         using std::get;
 
         if constexpr (affine_score_cell<tuple_t>)
-            return get<index>(std::forward<this_t>(me));
+        {
+            if constexpr (index < 2)
+                return get<index>(get<0>(std::forward<this_t>(me)));
+            else
+                return get<1>(std::forward<this_t>(me));
+        }
         else
             return get<index>(get<0>(std::forward<this_t>(me)));
     }

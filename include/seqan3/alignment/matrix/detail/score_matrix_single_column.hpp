@@ -55,8 +55,10 @@ template <typename score_t>
 class score_matrix_single_column
 {
 private:
+    //!\brief The combined column score.
+    using pair_score_t = std::pair<score_t, score_t>;
     //!\brief The type of the score column which allocates memory for the entire column.
-    using physical_column_t = std::vector<score_t, aligned_allocator<score_t, alignof(score_t)>>;
+    using physical_column_t = std::vector<pair_score_t, aligned_allocator<pair_score_t, alignof(pair_score_t)>>;
     //!\brief The type of the virtual score column which only stores one value.
     using virtual_column_t = decltype(views::repeat_n(score_t{}, 1));
 
@@ -65,7 +67,7 @@ private:
     //!\brief The column over the optimal scores.
     physical_column_t optimal_column{};
     //!\brief The column over the horizontal gap scores.
-    physical_column_t horizontal_column{};
+    // physical_column_t horizontal_column{};
     //!\brief The virtual column over the vertical gap scores.
     virtual_column_t vertical_column{};
     //!\brief The number of columns for this matrix.
@@ -116,9 +118,9 @@ public:
     {
         this->number_of_columns = number_of_columns.get();
         optimal_column.clear();
-        horizontal_column.clear();
-        optimal_column.resize(number_of_rows.get(), initial_value);
-        horizontal_column.resize(number_of_rows.get(), initial_value);
+        // horizontal_column.clear();
+        optimal_column.resize(number_of_rows.get(), {initial_value, initial_value});
+        // horizontal_column.resize(number_of_rows.get(), initial_value);
         vertical_column = views::repeat_n(initial_value, number_of_rows.get());
     }
 
@@ -163,7 +165,7 @@ private:
 
     //!\brief The type of the zipped score column.
     using matrix_column_t = decltype(views::zip(std::declval<physical_column_t &>(),
-                                                std::declval<physical_column_t &>(),
+                                                // std::declval<physical_column_t &>(),
                                                 std::declval<virtual_column_t &>()));
 
     //!\brief The transform adaptor to convert the tuple from the zip view into a seqan3::detail::affine_cell_type.
@@ -222,7 +224,7 @@ public:
     //!\brief Returns the range over the current column.
     reference operator*() const
     {
-        return views::zip(host_ptr->optimal_column, host_ptr->horizontal_column, host_ptr->vertical_column)
+        return views::zip(host_ptr->optimal_column, host_ptr->vertical_column)
              | transform_to_affine_cell;
     }
     //!\}
