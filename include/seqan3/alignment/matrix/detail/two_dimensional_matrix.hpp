@@ -232,14 +232,46 @@ public:
 
     /*!\brief Resizes the underlying matrix storage to the given matrix dimensions.
      *
-     * \param row_dim The row dimension (row count).
-     * \param col_dim The column dimension (column count).
+     * \param[in] row_dim The row dimension (row count).
+     * \param[in] col_dim The column dimension (column count).
+     * \param[in] initial_value The initial value set during resize.
+     *
+     * \details
+     *
+     * Resizes the underlying storage to the product of the given row_dim and col_dim. If the new size exceeds the old
+     * size, the new allocated elements are copy-initialised with `initial_value` if given or default initialised.
+     *
+     * ### Exception
+     *
+     * Might throw an implementation-defined exception.
+     * If an exception is thrown, this function has no effect (strong exception guarantee).
      */
-    void resize(number_rows const row_dim, number_cols const col_dim)
+    void resize(number_rows const row_dim, number_cols const col_dim, value_t initial_value = value_t{})
     {
+        storage.resize(row_dim.get() * col_dim.get(), initial_value);
+
         this->row_dim = row_dim.get();
         this->col_dim = col_dim.get();
-        storage.resize(this->row_dim * this->col_dim);
+    }
+
+    /*!\brief Clears the content of the matrix.
+     *
+     * \details
+     *
+     * Erases all elements from the matrix. After this call, `rows()` and `cols()` returns zero.
+     * Invalidates any references, pointers, or iterators referring to contained elements.
+     * Any past-the-end iterators are also invalidated.
+     * Leaves the capacity() of the underlying storage unchanged.
+     *
+     * ### Complexity
+     *
+     * Linear in the size of the matrix, i.e. the number of elements.
+     */
+    void clear()
+    {
+        storage.clear();
+        row_dim = 0;
+        col_dim = 0;
     }
 
     //!\copydoc seqan3::detail::matrix::rows

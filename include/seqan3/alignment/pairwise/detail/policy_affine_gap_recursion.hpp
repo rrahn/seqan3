@@ -16,6 +16,7 @@
 #include <tuple>
 
 #include <seqan3/alignment/configuration/align_config_gap_cost_affine.hpp>
+#include <seqan3/alignment/matrix/detail/alignment_matrix_element_affine_cell.hpp>
 #include <seqan3/alignment/matrix/detail/affine_cell_proxy.hpp>
 #include <seqan3/alignment/matrix/trace_directions.hpp>
 #include <seqan3/alignment/pairwise/detail/type_traits.hpp>
@@ -59,9 +60,10 @@ protected:
     //!\brief The configured score type.
     using score_type = typename traits_type::score_type;
     //!\brief The internal tuple storing the scores of an affine cell.
-    using affine_score_tuple_t = std::pair<std::pair<score_type, score_type>, score_type>;
+    // using affine_score_tuple_t = std::pair<std::pair<score_type, score_type>, score_type>;
+    using affine_score_tuple_t = std::tuple<score_type, score_type, score_type>;
     //!\brief The affine cell type returned by the functions.
-    using affine_cell_type = affine_cell_proxy<affine_score_tuple_t>;
+    using affine_cell_type = affine_cell<affine_score_tuple_t>;
 
     //!\brief The score for a gap extension.
     score_type gap_extension_score{};
@@ -150,7 +152,8 @@ protected:
         vertical_score = (vertical_score < tmp) ? tmp : vertical_score;
         horizontal_score = (horizontal_score < tmp) ? tmp : horizontal_score;
 
-        return {{diagonal_score, horizontal_score}, vertical_score};
+        // return {{diagonal_score, horizontal_score}, vertical_score};
+        return {diagonal_score, horizontal_score, vertical_score};
     }
 
     /*!\brief Initialises the first cell of the alignment matrix in the top left corner of the matrix.
@@ -165,8 +168,11 @@ protected:
      */
     affine_cell_type initialise_origin_cell() const noexcept
     {
-        return {{score_type{},
-                first_row_is_free ? score_type{} : gap_open_score},
+        // return {{score_type{},
+        //         first_row_is_free ? score_type{} : gap_open_score},
+        //         first_column_is_free ? score_type{} : gap_open_score};
+        return {score_type{},
+                first_row_is_free ? score_type{} : gap_open_score,
                 first_column_is_free ? score_type{} : gap_open_score};
     }
 
@@ -188,8 +194,11 @@ protected:
     affine_cell_type initialise_first_column_cell(affine_cell_t previous_cell) const noexcept
     {
         score_type new_vertical = previous_cell.vertical_score() + gap_extension_score;
-        return {{previous_cell.vertical_score(),
-                previous_cell.vertical_score() + gap_open_score},
+        // return {{previous_cell.vertical_score(),
+        //         previous_cell.vertical_score() + gap_open_score},
+        //         first_column_is_free ? previous_cell.vertical_score() : new_vertical};
+        return {previous_cell.vertical_score(),
+                previous_cell.vertical_score() + gap_open_score,
                 first_column_is_free ? previous_cell.vertical_score() : new_vertical};
     }
 
@@ -211,8 +220,11 @@ protected:
     affine_cell_type initialise_first_row_cell(affine_cell_t previous_cell) const noexcept
     {
         score_type new_horizontal_score = previous_cell.horizontal_score() + gap_extension_score;
-        return {{previous_cell.horizontal_score(),
-                first_row_is_free ? previous_cell.horizontal_score() : new_horizontal_score},
+        // return {{previous_cell.horizontal_score(),
+        //         first_row_is_free ? previous_cell.horizontal_score() : new_horizontal_score},
+        //         previous_cell.horizontal_score() + gap_open_score};
+        return {previous_cell.horizontal_score(),
+                first_row_is_free ? previous_cell.horizontal_score() : new_horizontal_score,
                 previous_cell.horizontal_score() + gap_open_score};
     }
 

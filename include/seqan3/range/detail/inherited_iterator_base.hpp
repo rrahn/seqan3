@@ -33,6 +33,10 @@ namespace seqan3::detail
  * This template enables you to inherit from another iterator and just overload those functions
  * that you wish to change.
  *
+ * This is an abstract base class.
+ * Classes that implement this CRTP-base class must implement a `from_base_impl` function that is called with the
+ * base iterator inherited from. This function returns a new instance of the derived iterator representing the
+ * current state of the base iterator.
  * Note that many of this class's members assume that the derived type is constructible from the base type.
  *
  * ### Example
@@ -222,13 +226,12 @@ public:
     template <typename base_t_ = base_t>
     //!\endcond
     constexpr derived_t operator++(int) noexcept(noexcept(std::declval<base_t &>()++) &&
-                                                 noexcept(derived_t(std::declval<base_t &>())))
+                                                 noexcept(inherited_iterator_base::from_base(std::declval<base_t>())))
     //!\cond
-        requires requires (base_t_ i) { i++; SEQAN3_RETURN_TYPE_CONSTRAINT(i++, std::same_as, base_t_); } &&
-                 std::constructible_from<derived_t, base_t_>
+        requires requires (base_t_ i) { i++; SEQAN3_RETURN_TYPE_CONSTRAINT(i++, std::same_as, base_t_); }
     //!\endcond
     {
-        return derived_t{as_base()++};
+        return from_base(as_base()++);
     }
 
     //!\brief Pre-decrement, return updated iterator.
@@ -249,12 +252,12 @@ public:
     template <typename base_t_ = base_t>
     //!\endcond
     constexpr derived_t operator--(int) noexcept(noexcept(std::declval<base_t &>()--) &&
-                                                 noexcept(derived_t{std::declval<base_t &>()}))
+                                                 noexcept(inherited_iterator_base::from_base(std::declval<base_t>())))
     //!\cond
-        requires requires (base_t_ i) { i--; } && std::constructible_from<derived_t, base_t_>
+        requires requires (base_t_ i) { i--; }
     //!\endcond
     {
-        return derived_t{as_base()--};
+        return form_base(as_base()--);
     }
 
     //!\brief Move iterator to the right.
@@ -275,21 +278,20 @@ public:
     template <typename base_t_ = base_t>
     //!\endcond
     constexpr derived_t operator+(difference_type const skip) const
-        noexcept(noexcept(std::declval<base_t &>() + skip) && noexcept(derived_t{std::declval<base_t &>()}))
+        noexcept(noexcept(std::declval<base_t &>() + skip) &&
+                 noexcept(inherited_iterator_base::from_base(std::declval<base_t>())))
     //!\cond
-        requires requires (base_t_ const i, difference_type const n) { i + n; } &&
-                 std::constructible_from<derived_t, base_t_>
+        requires requires (base_t_ const i, difference_type const n) { i + n; }
     //!\endcond
     {
-        return derived_t{as_base() + skip};
+        return form_base(as_base() + skip);
     }
 
     //!\brief Non-member operator+ delegates to non-friend operator+.
     constexpr friend derived_t operator+(difference_type const skip, derived_t const & it)
         noexcept(noexcept(skip + std::declval<base_t const &>()))
     //!\cond
-        requires requires (base_t const i, difference_type const n) { n + i; } &&
-                 std::constructible_from<derived_t, base_t>
+        requires requires (base_t const i, difference_type const n) { n + i; }
     //!\endcond
     {
         return it + skip;
@@ -313,13 +315,13 @@ public:
     template <typename base_t_ = base_t>
     //!\endcond
     constexpr derived_t operator-(difference_type const skip) const
-        noexcept(noexcept(std::declval<base_t const &>() - skip) && noexcept(derived_t(std::declval<base_t &>())))
+        noexcept(noexcept(std::declval<base_t const &>() - skip) &&
+                 noexcept(inherited_iterator_base::from_base(std::declval<base_t>())))
     //!\cond
-        requires requires (base_t_ i, difference_type const n) { i - n; } &&
-                 std::constructible_from<derived_t, base_t_>
+        requires requires (base_t_ i, difference_type const n) { i - n; }
     //!\endcond
     {
-        return derived_t{as_base() - skip};
+        return from_base(as_base() - skip);
     }
 
     //!\brief Return offset between this and remote iterator's position.
@@ -434,6 +436,21 @@ private:
     constexpr derived_t const * this_derived() const
     {
         return static_cast<derived_t const *>(this);
+    }
+
+    /*!\brief Returns an object of the derived type initialised with the base iterator.
+     *
+     * \param[in] base The base iterator used to get a new object of the derived type for.
+     *
+     * \details
+     *
+     * The state changes of the inherited base iterator need to be propagated to the derived iterator type in order
+     * to provide a valid derived iterator type. For this the derived type must implement the behaviour to generate a
+     * new iterator object from the current base iterator by implementing the respective `from_base_impl`.
+     */
+    derived_t from_base(base_t base) const noexcept(noexcept(derived_t{}.from_base_impl(std::move(base))))
+    {
+        return this_derived().from_base_impl(std::move(base));
     }
 };
 
