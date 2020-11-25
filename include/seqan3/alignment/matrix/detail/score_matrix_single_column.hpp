@@ -48,26 +48,28 @@ namespace seqan3::detail
  * view is the seqan3::detail::affine_cell_proxy, which offers a practical interface to access the value of the
  * optimal, horizontal and vertical value of the underlying matrices.
  */
-template <typename score_t>
+template <typename score_traits_t>
 //!\cond
-    requires (arithmetic<score_t> || simd_concept<score_t>)
+    // requires (arithmetic<score_t> || simd_concept<score_t>)
 //!\endcond
 class score_matrix_single_column
 {
 private:
-    //!\brief The combined column score.
-    using pair_score_t = std::pair<score_t, score_t>;
+    using score_type = typename score_traits_t::value_type;
+    //!\brief The column score type.
+    using column_value_type = typename score_traits_t::column_value_type;
+    //!\brief The column score type.
+    using vertical_value_type = typename score_traits_t::vertical_value_type;
     //!\brief The type of the score column which allocates memory for the entire column.
-    using physical_column_t = std::vector<pair_score_t, aligned_allocator<pair_score_t, alignof(pair_score_t)>>;
+    using physical_column_t = std::vector<column_value_type,
+                                          aligned_allocator<column_value_type, alignof(column_value_type)>>;
     //!\brief The type of the virtual score column which only stores one value.
-    using virtual_column_t = decltype(views::repeat_n(score_t{}, 1));
+    using virtual_column_t = decltype(views::repeat_n(vertical_value_type{}, 1));
 
     class matrix_iterator;
 
     //!\brief The column over the optimal scores.
     physical_column_t optimal_column{};
-    //!\brief The column over the horizontal gap scores.
-    // physical_column_t horizontal_column{};
     //!\brief The virtual column over the vertical gap scores.
     virtual_column_t vertical_column{};
     //!\brief The number of columns for this matrix.
@@ -114,14 +116,13 @@ public:
     template <std::integral column_index_t, std::integral row_index_t>
     void resize(column_index_type<column_index_t> const number_of_columns,
                 row_index_type<row_index_t> const number_of_rows,
-                score_t const initial_value = score_t{})
+                score_type const initial_value = score_type{})
     {
         this->number_of_columns = number_of_columns.get();
         optimal_column.clear();
-        // horizontal_column.clear();
-        optimal_column.resize(number_of_rows.get(), {initial_value, initial_value});
-        // horizontal_column.resize(number_of_rows.get(), initial_value);
-        vertical_column = views::repeat_n(initial_value, number_of_rows.get());
+        optimal_column.resize(number_of_rows.get(), score_traits_t::initialise_column_value(initial_value));
+        vertical_column = views::repeat_n(score_traits_t::initialise_vertical_value(initial_value),
+                                          number_of_rows.get());
     }
 
     /*!\name Iterators
@@ -158,14 +159,13 @@ public:
  * seqan3::detail::affine_cell_proxy to simplify the access to the correct values without knowing the internal
  * tuple layout returned by the seqan3::views::zip view.
  */
-template <typename score_t>
-class score_matrix_single_column<score_t>::matrix_iterator
+template <typename score_traits_t>
+class score_matrix_single_column<score_traits_t>::matrix_iterator
 {
 private:
 
     //!\brief The type of the zipped score column.
     using matrix_column_t = decltype(views::zip(std::declval<physical_column_t &>(),
-                                                // std::declval<physical_column_t &>(),
                                                 std::declval<virtual_column_t &>()));
 
     //!\brief The transform adaptor to convert the tuple from the zip view into a seqan3::detail::affine_cell_type.

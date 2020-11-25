@@ -53,11 +53,10 @@ struct alignment_matrix_traits
  */
 template <typename traits_t, typename alignment_matrix_t>
 //!\cond
-    // requires requires (alignment_matrix_t & matrix, typename traits_t::score_type const initial_score)
-    //          {
-    //             //  { matrix.resize(column_index_type{size_t{}}, row_index_type{size_t{}}, initial_score) };
-    //             //  { matrix.storage().resize(row_index_type{size_t{}}, column_index_type{size_t{}}, initial_score) };
-    //          }
+    requires requires (alignment_matrix_t & matrix, typename traits_t::score_type const initial_score)
+             {
+                 { matrix.resize(column_index_type{size_t{}}, row_index_type{size_t{}}, initial_score) };
+             }
 //!\endcond
 class policy_alignment_matrix
 {
@@ -192,8 +191,7 @@ protected:
             row_count = std::min<int64_t>(upper_diagonal - lower_diagonal + 2, row_count);
         }
 
-        // alignment_matrix.resize(column_index_type{column_count}, row_index_type{row_count}, initial_score);
-        alignment_matrix.storage().resize(row_index_type{row_count}, column_index_type{column_count}, initial_score);
+        alignment_matrix.resize(column_index_type{column_count}, row_index_type{row_count}, initial_score);
 
         return std::tie(alignment_matrix, index_matrix);
     }

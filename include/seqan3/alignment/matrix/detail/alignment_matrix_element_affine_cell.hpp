@@ -20,121 +20,22 @@
 
 namespace seqan3::detail
 {
-
-template <typename tuple_t>
-class affine_cell : public tuple_t
-{
-public:
-    /*!\name Constructors, destructor and assignment
-     * \{
-     */
-    affine_cell() = default; //!< Defaulted.
-    affine_cell(affine_cell const &) = default; //!< Defaulted.
-    affine_cell(affine_cell &&) = default; //!< Defaulted.
-    affine_cell & operator=(affine_cell const &) = default; //!< Defaulted.
-    affine_cell & operator=(affine_cell &&) = default; //!< Defaulted.
-    ~affine_cell() = default; //!< Defaulted.
-
-    // Inherit the base class's constructor to enable element-wise initialisation (direct and converting constructor).
-    using tuple_t::tuple_t;
-
-    //!\brief Converting copy-constructor.
-    template <typename other_tuple_t>
-    //!\cond
-        requires std::constructible_from<tuple_t, other_tuple_t &&>
-    //!\endcond
-    explicit affine_cell(affine_cell<other_tuple_t> other) :
-        tuple_t{static_cast<other_tuple_t &&>(other)}
-    {}
-
-    //!\brief Converting copy-assignment.
-    template <typename other_tuple_t>
-    //!\cond
-        requires std::assignable_from<tuple_t &, other_tuple_t &&>
-    //!\endcond
-    affine_cell & operator=(affine_cell<other_tuple_t> other)
-    {
-        as_base() = static_cast<other_tuple_t &&>(other);
-        return *this;
-    }
-    //!\}
-
-    /*!\name Score value accessor
-     * \brief Specific accessor function to get the respective score value from an affine matrix cell.
-     * \{
-     */
-    //!\brief Access the best score of the wrapped score matrix cell.
-    decltype(auto) best_score() & noexcept { return get_score_impl<0>(*this); }
-    //!\overload
-    decltype(auto) best_score() const & noexcept { return get_score_impl<0>(*this); }
-    //!\overload
-    decltype(auto) best_score() && noexcept { return get_score_impl<0>(std::move(*this)); }
-
-    //!\brief Access the horizontal score of the wrapped score matrix cell.
-    decltype(auto) horizontal_score() & noexcept { return get_score_impl<1>(*this); }
-    //!\overload
-    decltype(auto) horizontal_score() const & noexcept { return get_score_impl<1>(*this); }
-    //!\overload
-    decltype(auto) horizontal_score() && noexcept { return get_score_impl<1>(std::move(*this)); }
-
-    //!\brief Access the vertical score of the wrapped score matrix cell.
-    decltype(auto) vertical_score() & noexcept { return get_score_impl<2>(*this); }
-    //!\overload
-    decltype(auto) vertical_score() const & noexcept { return get_score_impl<2>(*this); }
-    //!\overload
-    decltype(auto) vertical_score() && noexcept { return get_score_impl<2>(std::move(*this)); }
-    //!\}
-
-private:
-    /*!\brief Implements the get interface for the various calls to receive the score value.
-     * \tparam index The index of the tuple element to get; must be smaller than 3.
-     * \tparam this_t The perfectly forwarded type of `*this`.
-     *
-     * \param[in] me The instance of `*this`.
-     *
-     * \returns The score value from the given tuple index.
-     */
-    template <size_t index, typename this_t>
-    //!\cond
-        requires (index < 3)
-    //!\endcond
-    static constexpr decltype(auto) get_score_impl(this_t && me) noexcept
-    {
-        using std::get;
-
-        return get<index>(std::forward<this_t>(me));
-    }
-
-    //!\brief Casts `this` to the base class type.
-    tuple_t & as_base() & noexcept
-    {
-        return static_cast<tuple_t &>(*this);
-    }
-};
-
 template <std::semiregular score_t>
 struct alignment_matrix_element_affine_cell
 {
-private:
-    score_t vertical_score{};
-public:
-
     using value_type = score_t;
-    using storage_value_type = std::pair<value_type, value_type>;
-    using element_type = affine_cell<std::tuple<value_type, value_type, value_type>>;
-    using element_reference = affine_cell<std::tuple<value_type &, value_type &, value_type &>>;
+    using column_value_type = std::pair<value_type, value_type>;
+    using vertical_value_type = score_t;
 
-    static constexpr bool returns_element_proxy = true;
-
-    constexpr element_reference make_element(storage_value_type & storage_value)
+    constexpr static column_value_type initialise_column_value(score_t init) noexcept
     {
-        return {storage_value.first, storage_value.second, vertical_score};
+        return {init, init};
     }
 
-    constexpr storage_value_type initialise(value_type const value) noexcept
+    constexpr static vertical_value_type initialise_vertical_value(score_t init) noexcept
     {
-        vertical_score = value;
-        return {value, value};
+        return init;
     }
 };
+
 }  // namespace seqan3::detail
