@@ -1,0 +1,5 @@
+seqan3_benchmark(simd_score_only_cell_computation_benchmark.cpp)
+# seqan3_benchmark(simd_score_and_trace_cell_computation_benchmark.cpp)
+# seqan3_benchmark(simd_trace_matrix_storage_efficiency_benchmark.cpp)
+
+add_subdirectories ()

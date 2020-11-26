@@ -12,3 +12,5 @@ find_package(OpenMP)
 if (TARGET OpenMP::OpenMP_CXX)
 target_link_libraries(global_affine_alignment_parallel_benchmark OpenMP::OpenMP_CXX)
 endif()
+
+add_subdirectories ()

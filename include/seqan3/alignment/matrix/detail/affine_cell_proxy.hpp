@@ -395,10 +395,10 @@ private:
 
         // if constexpr (affine_score_cell<tuple_t>)
         // {
-        //     if constexpr (index < 2)
-        //         return get<index>(get<0>(std::forward<this_t>(me)));
-        //     else
-        //         return get<1>(std::forward<this_t>(me));
+            if constexpr (index < 2)
+                return get<index>(get<0>(std::forward<this_t>(me)));
+            else
+                return get<1>(std::forward<this_t>(me));
         // }
         // else
         {
@@ -413,10 +413,10 @@ private:
                 // __vector(8) int&
             //>
         //>&
-            if constexpr (index < 2)
-                return get<index>(get<0>(get<0>(std::forward<this_t>(me))));
-            else
-                return get<1>(get<0>(std::forward<this_t>(me)));
+            // if constexpr (index < 2)
+            //     return get<index>(get<0>(get<0>(std::forward<this_t>(me))));
+            // else
+            //     return get<1>(get<0>(std::forward<this_t>(me)));
             // return get<index>(get<0>(std::forward<this_t>(me)));
         }
     }
