@@ -19,29 +19,21 @@
 
 namespace seqan3::detail
 {
-template <typename score_t>
-struct alignment_matrix_element_affine_score_plus
+template <std::semiregular score_t>
+struct alignment_matrix_element_affine_cell_plus
 {
-private:
-    std::pair<score_t, score_t> vertical_score{};
-public:
-
     using value_type = score_t;
-    using storage_value_type = std::pair<value_type, value_type>;
-    using element_type = affine_cell<std::tuple<value_type, value_type, value_type, value_type>>;
-    using element_reference = affine_cell<std::tuple<value_type &, value_type &, value_type &, value_type &>>;
+    using column_value_type = std::pair<value_type, value_type>;
+    using vertical_value_type = column_value_type;
 
-    static constexpr bool returns_element_proxy = true;
-
-    constexpr element_reference make_element(storage_value_type & storage_value)
+    constexpr static column_value_type initialise_column_value(score_t init) noexcept
     {
-        return {storage_value.first, storage_value.second, vertical_score.first, vertical_score.second};
+        return {init, init};
     }
 
-    constexpr storage_value_type initialise(value_type const value) noexcept
+    constexpr static vertical_value_type initialise_vertical_value(score_t init) noexcept
     {
-        vertical_score = {value, value};
-        return {value, value};
+        return {init, init};
     }
 };
 }  // namespace seqan3::detail

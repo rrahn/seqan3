@@ -211,19 +211,19 @@ protected:
             result.data.end_positions.second = end_positions.row;
         }
 
-        if constexpr (traits_type::requires_trace_information)
+        // if constexpr (traits_type::requires_trace_information)
         {
-            aligned_sequence_builder builder{get<0>(sequence_pair), get<1>(sequence_pair)};
-            auto aligned_sequence_result = builder(trace_path_from(end_positions));
+            // aligned_sequence_builder builder{get<0>(sequence_pair), get<1>(sequence_pair)};
+            // auto aligned_sequence_result = builder(trace_path_from(end_positions));
 
-            if constexpr (traits_type::compute_begin_positions)
-            {
-                result.data.begin_positions.first = aligned_sequence_result.first_sequence_slice_positions.first;
-                result.data.begin_positions.second = aligned_sequence_result.second_sequence_slice_positions.first;
-            }
+            // if constexpr (traits_type::compute_begin_positions)
+            // {
+            //     result.data.begin_positions.first = aligned_sequence_result.first_sequence_slice_positions.first;
+            //     result.data.begin_positions.second = aligned_sequence_result.second_sequence_slice_positions.first;
+            // }
 
-            if constexpr (traits_type::compute_sequence_alignment)
-                result.data.alignment = std::move(aligned_sequence_result.alignment);
+            // if constexpr (traits_type::compute_sequence_alignment)
+            //     result.data.alignment = std::move(aligned_sequence_result.alignment);
         }
 
         // In case we run in debug mode, we need to store the score and possibly trace matrix.

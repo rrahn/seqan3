@@ -146,15 +146,48 @@ void seqan2_affine_accelerated(benchmark::State & state, alphabet_t, args_t && .
         upper_diagonal = band_cfg.upper_diagonal;
     }
 
+    // ----------------------------------------------------------------------------
+    // Prepare trace computation
+    // ----------------------------------------------------------------------------
+
+    constexpr bool execute_with_trace = seqan3_align_cfg.template exists<seqan3::align_cfg::output_alignment>() ||
+                                        seqan3_align_cfg.template exists<seqan3::align_cfg::output_begin_position>();
+
+    using sequence_t = std::ranges::range_value_t<decltype(vec1)>;
+    using gapped_sequence_t = seqan::Gaps<sequence_t>;
+    using gapped_sequence_collection_t = seqan::StringSet<gapped_sequence_t>;
+
+    gapped_sequence_collection_t gapped_sequence1{};
+    gapped_sequence_collection_t gapped_sequence2{};
+
+    if constexpr (execute_with_trace)
+    {
+        seqan::resize(gapped_sequence1, set_size);
+        seqan::resize(gapped_sequence2, set_size);
+
+        for (size_t i = 0; i < set_size; ++i)
+        {
+            seqan::assignSource(gapped_sequence1[i], vec1[i]);
+            seqan::assignSource(gapped_sequence2[i], vec2[i]);
+        }
+    }
+
     int64_t total = 0;
     for (auto _ : state)
     {
         // In SeqAn2 the gap open contains already the gap extension costs, that's why we use -11 here.
         seqan::String<int> res;
         if constexpr (execute_with_band)
+        {
             res = seqan::globalAlignmentScore(exec, vec1, vec2, scoring_scheme, lower_diagonal, upper_diagonal);
+        }
         else
-            res = seqan::globalAlignmentScore(exec, vec1, vec2, scoring_scheme);
+        {
+            if constexpr (execute_with_trace)
+                res = seqan::globalAlignment(exec, gapped_sequence1, gapped_sequence2, scoring_scheme);
+            else
+                res = seqan::globalAlignmentScore(exec, vec1, vec2, scoring_scheme);
+        }
 
         total = std::accumulate(seqan::begin(res), seqan::end(res), total);
     }

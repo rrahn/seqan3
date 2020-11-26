@@ -55,7 +55,6 @@ template <typename score_traits_t>
 class score_matrix_single_column
 {
 private:
-    using score_type = typename score_traits_t::value_type;
     //!\brief The column score type.
     using column_value_type = typename score_traits_t::column_value_type;
     //!\brief The column score type.
@@ -76,6 +75,7 @@ private:
     size_t number_of_columns{};
 
 public:
+    using score_type = typename score_traits_t::value_type;
     /*!\name Constructors, destructor and assignment
      * \{
      */

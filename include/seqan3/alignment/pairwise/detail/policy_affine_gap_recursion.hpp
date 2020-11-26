@@ -154,6 +154,11 @@ protected:
 
         return {{diagonal_score, horizontal_score}, vertical_score};
         // return {diagonal_score, horizontal_score, vertical_score};
+        // 10 assignments
+        // 4 additions
+        // 4 comparisons
+        // 4 blends
+        // 22 operations
     }
 
     /*!\brief Initialises the first cell of the alignment matrix in the top left corner of the matrix.

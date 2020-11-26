@@ -13,6 +13,7 @@
 #pragma once
 
 #include <seqan3/alignment/matrix/detail/alignment_matrix_element_affine_cell.hpp>
+#include <seqan3/alignment/matrix/detail/alignment_matrix_element_affine_cell_plus.hpp>
 #include <seqan3/alignment/matrix/detail/combined_score_and_trace_matrix.hpp>
 #include <seqan3/alignment/matrix/detail/score_matrix_single_column.hpp>
 #include <seqan3/alignment/matrix/detail/trace_matrix_full.hpp>
@@ -27,7 +28,11 @@ struct select_alignment_matrix_policy
 {
 private:
 
-    using matrix_element_t = alignment_matrix_element_affine_cell<typename algorithm_traits_t::score_type>;
+    using score_type = typename algorithm_traits_t::score_type;
+    using matrix_element_t =
+        std::conditional_t<algorithm_traits_t::requires_trace_information,
+                           alignment_matrix_element_affine_cell_plus<score_type>,
+                           alignment_matrix_element_affine_cell<score_type>>;
     using score_matrix_t = score_matrix_single_column<matrix_element_t>;
     using trace_matrix_t = trace_matrix_full<typename algorithm_traits_t::trace_type>;
 
@@ -35,7 +40,7 @@ private:
                                                   combined_score_and_trace_matrix<score_matrix_t, trace_matrix_t>,
                                                   score_matrix_t>;
 
-    using alignment_matrix_traits_t = alignment_matrix_traits<typename algorithm_traits_t::score_type,
+    using alignment_matrix_traits_t = alignment_matrix_traits<score_type,
                                                               typename algorithm_traits_t::matrix_index_type,
                                                               algorithm_traits_t::requires_trace_information>;
 

@@ -15,8 +15,9 @@
 #include <seqan3/alignment/pairwise/detail/policy_affine_gap_recursion.hpp>
 #include <seqan3/alignment/pairwise/detail/policy_affine_gap_recursion_banded.hpp>
 #include <seqan3/alignment/pairwise/detail/policy_affine_gap_with_trace_recursion.hpp>
+#include <seqan3/alignment/pairwise/detail/policy_affine_gap_with_trace_recursion_opt.hpp>
 #include <seqan3/alignment/pairwise/detail/policy_affine_gap_with_trace_recursion_banded.hpp>
-#include <seqan3/alignment/pairwise/detail/policy_optimum_tracker_simd.hpp>
+#include <seqan3/core/type_traits/lazy.hpp>
 
 namespace seqan3::detail
 {
@@ -38,18 +39,18 @@ private:
 
 public:
     //!\brief The configured recursion policy.
-    using type = std::conditional_t<with_trace,
-                                    policy_with_trace<recursion_policy_traits_t>,
-                                    policy_score<recursion_policy_traits_t>>;
+    using type = lazy_conditional_t<with_trace,
+                                    lazy<policy_with_trace, recursion_policy_traits_t>,
+                                    lazy<policy_score, recursion_policy_traits_t>>;
 };
 
 template <typename algorithm_traits_t>
 using select_recursion_policy_t =
-    std::conditional_t<algorithm_traits_t::is_banded,
-                       typename select_recursion_policy<algorithm_traits_t,
-                                                        policy_affine_gap_recursion_banded,
-                                                        policy_affine_gap_with_trace_recursion_banded>::type,
+    // std::conditional_t<algorithm_traits_t::is_banded,
+    //                    typename select_recursion_policy<algorithm_traits_t,
+    //                                                     policy_affine_gap_recursion_banded,
+    //                                                     policy_affine_gap_with_trace_recursion_banded>::type,
                        typename select_recursion_policy<algorithm_traits_t,
                                                         policy_affine_gap_recursion,
-                                                        policy_affine_gap_with_trace_recursion>::type>;
+                                                        policy_affine_gap_with_trace_recursion_opt>::type;//>;
 }  // namespace seqan3::detail

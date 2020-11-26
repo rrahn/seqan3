@@ -59,23 +59,23 @@ private:
     using matrix_t = two_dimensional_matrix<trace_t,
                                             aligned_allocator<trace_t, sizeof(trace_t)>,
                                             matrix_major_order::column>;
-    //!\brief The type of the score column which allocates memory for the entire column.
-    using physical_column_t = std::vector<trace_t>;
-    //!\brief The type of the virtual score column which only stores one value.
-    using virtual_column_t = decltype(views::repeat_n(trace_t{}, 1));
+    // //!\brief The type of the score column which allocates memory for the entire column.
+    // using physical_column_t = std::vector<trace_t>;
+    // //!\brief The type of the virtual score column which only stores one value.
+    // using virtual_column_t = decltype(views::repeat_n(trace_t{}, 1));
 
     class iterator;
 
     //!\brief The full trace matrix.
     matrix_t complete_matrix{};
-    //!\brief The column over the horizontal traces.
-    physical_column_t horizontal_column{};
-    //!\brief The virtual column over the vertical traces.
-    virtual_column_t vertical_column{};
+    // //!\brief The column over the horizontal traces.
+    // physical_column_t horizontal_column{};
+    // //!\brief The virtual column over the vertical traces.
+    // virtual_column_t vertical_column{};
     //!\brief The number of columns for this matrix.
-    size_t column_count{};
-    //!\brief The number of rows for this matrix.
-    size_t row_count{};
+    // size_t column_count{};
+    // //!\brief The number of rows for this matrix.
+    // size_t row_count{};
 
 public:
     /*!\name Constructors, destructor and assignment
@@ -112,14 +112,14 @@ public:
      * Basic exception guarantee. Might throw std::bad_alloc on resizing the internal matrices.
      */
     template <std::integral column_index_t, std::integral row_index_t>
-    void resize(column_index_type<column_index_t> const column_count,
+    void resize([[maybe_unused]]column_index_type<column_index_t> const column_count,
                 row_index_type<row_index_t> const row_count)
     {
-        this->column_count = column_count.get();
-        this->row_count = row_count.get();
-        complete_matrix.resize(number_rows{this->row_count}, number_cols{this->column_count});
-        horizontal_column.resize(this->row_count);
-        vertical_column = views::repeat_n(trace_t{}, this->row_count);
+        // this->column_count = column_count.get();
+        // this->row_count = row_count.get();
+        complete_matrix.resize(number_rows{row_count.get()}, number_cols{1u});
+        // horizontal_column.resize(this->row_count);
+        // vertical_column = views::repeat_n(trace_t{}, this->row_count);
     }
 
     /*!\brief Returns an iterator pointing to the underlying trace matrix at the given matrix coordinate.
@@ -127,14 +127,14 @@ public:
      * \returns An iterator pointing to the underlying trace matrix.
      * \throws std::out_of_range if the specified coordinate is out of range.
      */
-    auto matrix_iterator_at(matrix_coordinate const & trace_begin) const
+    auto matrix_iterator_at([[maybe_unused]] matrix_coordinate const & trace_begin) const
     {
         using matrix_iter_t = std::ranges::iterator_t<matrix_t const>;
 
-        if (trace_begin.row >= row_count || trace_begin.col >= column_count)
-            throw std::out_of_range{"The given coordinate exceeds the matrix in vertical or horizontal direction."};
+        // if (trace_begin.row >= complete_matrix.rows() || trace_begin.col >= complete_matrix.cols())
+        //     throw std::out_of_range{"The given coordinate exceeds the matrix in vertical or horizontal direction."};
 
-        return matrix_iter_t{complete_matrix.begin() + matrix_offset{trace_begin}};
+        return matrix_iter_t{complete_matrix.begin() + 1};
     }
 
     /*!\name Iterators
@@ -152,7 +152,7 @@ public:
     //!\brief Returns the iterator pointing behind the last column.
     iterator end()
     {
-        return iterator{*this, column_count};
+        return iterator{*this, complete_matrix.cols()};
     }
 
     //!\brief This score matrix is not const-iterable.
@@ -179,28 +179,29 @@ private:
     //!\brief A lightweight representation of a single column from the complete matrix.
     using single_trace_column_type = std::span<trace_t>;
     //!\brief The type of the zipped score column.
-    using matrix_column_type = decltype(views::zip(std::declval<single_trace_column_type>(),
-                                                   std::declval<physical_column_t &>(),
-                                                   std::declval<virtual_column_t &>()));
+    // using matrix_column_type = decltype(views::zip(std::declval<single_trace_column_type>(),
+    //                                                std::declval<physical_column_t &>(),
+    //                                                std::declval<virtual_column_t &>()));
     //!\brief The column type as value type.
-    using matrix_column_value_t = std::vector<std::ranges::range_value_t<matrix_column_type>>;
+    // using matrix_column_value_t = std::vector<std::ranges::range_value_t<matrix_column_type>>;
 
     // Defines a proxy that can be converted to the value type.
-    class column_proxy;
+    // class column_proxy;
 
     //!\brief The pointer to the underlying matrix.
-    trace_matrix_full * host_ptr{nullptr};
+    trace_t * data_ptr{nullptr};
     //!\brief The current column index.
-    size_t current_column_id{};
+    size_t row_count{};
 
+    size_t column{};
 public:
     /*!\name Associated types
      * \{
      */
     //!\brief The value type.
-    using value_type = matrix_column_value_t;
+    using value_type = single_trace_column_type;
     //!\brief The reference type.
-    using reference = column_proxy;
+    using reference = single_trace_column_type;
     //!\brief The pointer type.
     using pointer = void;
     //!\brief The difference type.
@@ -225,8 +226,9 @@ public:
      * \param[in] initial_column_id The initial column index.
      */
     explicit iterator(trace_matrix_full & host_matrix, size_t const initial_column_id) noexcept :
-        host_ptr{std::addressof(host_matrix)},
-        current_column_id{initial_column_id}
+        data_ptr{host_matrix.complete_matrix.data() + initial_column_id * host_matrix.complete_matrix.rows()},
+        row_count{host_matrix.complete_matrix.rows()},
+        column{initial_column_id}
     {}
     //!\}
 
@@ -236,12 +238,9 @@ public:
     //!\brief Returns the range over the current column.
     reference operator*() const
     {
-        auto column_begin = host_ptr->complete_matrix.data() + current_column_id * host_ptr->row_count;
-        single_trace_column_type single_trace_column{column_begin, column_begin + host_ptr->row_count};
+        assert(data_ptr != nullptr);
 
-        return column_proxy{views::zip(std::move(single_trace_column),
-                                       host_ptr->horizontal_column,
-                                       host_ptr->vertical_column)};
+        return reference{data_ptr, data_ptr + row_count};
     }
     //!\}
 
@@ -251,7 +250,8 @@ public:
     //!\brief Move `this` to the next column.
     iterator & operator++()
     {
-        ++current_column_id;
+        ++column;
+        // data_ptr += row_count;
         return *this;
     }
 
@@ -268,7 +268,7 @@ public:
     //!\brief Tests whether `lhs == rhs`.
     friend bool operator==(iterator const & lhs, iterator const & rhs) noexcept
     {
-        return lhs.current_column_id == rhs.current_column_id;
+        return lhs.column == rhs.column;
     }
 
     //!\brief Tests whether `lhs != rhs`.
@@ -287,63 +287,63 @@ public:
  * The proxy stores the column view of the current iterator and offers a dedicated conversion operator to
  * assign it to the value type of the iterator.
  */
-template <typename trace_t>
-//!\cond
-    requires (std::same_as<trace_t, trace_directions> || simd::simd_concept<trace_t>)
-//!\endcond
-class trace_matrix_full<trace_t>::iterator::column_proxy : public std::ranges::view_interface<column_proxy>
-{
-private:
-    //!\brief The represented column.
-    matrix_column_type column{};
+// template <typename trace_t>
+// //!\cond
+//     requires (std::same_as<trace_t, trace_directions> || simd::simd_concept<trace_t>)
+// //!\endcond
+// class trace_matrix_full<trace_t>::iterator::column_proxy : public std::ranges::view_interface<column_proxy>
+// {
+// private:
+//     //!\brief The represented column.
+//     matrix_column_type column{};
 
-public:
-    /*!\name Constructor, assignment and destructor
-     * \{
-     */
-    column_proxy() = default; //!< Defaulted.
-    column_proxy(column_proxy const &) = default; //!< Defaulted.
-    column_proxy(column_proxy &&) = default; //!< Defaulted.
-    column_proxy & operator=(column_proxy const &) = default; //!< Defaulted.
-    column_proxy & operator=(column_proxy &&) = default; //!< Defaulted.
-    ~column_proxy() = default; //!< Defaulted.
+// public:
+//     /*!\name Constructor, assignment and destructor
+//      * \{
+//      */
+//     column_proxy() = default; //!< Defaulted.
+//     column_proxy(column_proxy const &) = default; //!< Defaulted.
+//     column_proxy(column_proxy &&) = default; //!< Defaulted.
+//     column_proxy & operator=(column_proxy const &) = default; //!< Defaulted.
+//     column_proxy & operator=(column_proxy &&) = default; //!< Defaulted.
+//     ~column_proxy() = default; //!< Defaulted.
 
-    /*!\brief Initialises the proxy with the respective column.
-    *
-    * \param[in] column The column to set.
-    */
-    explicit column_proxy(matrix_column_type && column) noexcept : column{std::move(column)}
-    {}
-    //!\}
+//     /*!\brief Initialises the proxy with the respective column.
+//     *
+//     * \param[in] column The column to set.
+//     */
+//     explicit column_proxy(matrix_column_type && column) noexcept : column{std::move(column)}
+//     {}
+//     //!\}
 
-    /*!\name Iterators
-     * \{
-     */
-    //!\brief Returns an iterator to the begin of the column.
-    std::ranges::iterator_t<matrix_column_type> begin()
-    {
-        return column.begin();
-    }
-    //!\brief Const iterator is not accessible.
-    std::ranges::iterator_t<matrix_column_type> begin() const = delete;
+//     /*!\name Iterators
+//      * \{
+//      */
+//     //!\brief Returns an iterator to the begin of the column.
+//     std::ranges::iterator_t<matrix_column_type> begin()
+//     {
+//         return column.begin();
+//     }
+//     //!\brief Const iterator is not accessible.
+//     std::ranges::iterator_t<matrix_column_type> begin() const = delete;
 
-    //!\brief Returns a sentinel marking the end of the column.
-    std::ranges::sentinel_t<matrix_column_type> end()
-    {
-        return column.end();
-    }
+//     //!\brief Returns a sentinel marking the end of the column.
+//     std::ranges::sentinel_t<matrix_column_type> end()
+//     {
+//         return column.end();
+//     }
 
-    //!\brief Const sentinel is not accessible.
-    std::ranges::sentinel_t<matrix_column_type> end() const = delete;
-    //!\}
+//     //!\brief Const sentinel is not accessible.
+//     std::ranges::sentinel_t<matrix_column_type> end() const = delete;
+//     //!\}
 
-    //!\brief Implicitly converts the column proxy into the value type of the iterator.
-    constexpr operator matrix_column_value_t() const
-    {
-        matrix_column_value_t target{};
-        std::ranges::copy(column, std::cpp20::back_inserter(target));
-        return target;
-    }
-};
+//     //!\brief Implicitly converts the column proxy into the value type of the iterator.
+//     constexpr operator matrix_column_value_t() const
+//     {
+//         matrix_column_value_t target{};
+//         std::ranges::copy(column, std::cpp20::back_inserter(target));
+//         return target;
+//     }
+// };
 
 } // namespace seqan3::detail

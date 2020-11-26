@@ -50,7 +50,7 @@ class combined_score_and_trace_matrix
 {
 private:
     //!\brief The score type extracted from the score matrix. (TODO: make this less complicated by exposing the score type).
-    using score_type = remove_cvref_t<std::tuple_element_t<0, range_innermost_value_t<score_matrix_t>>>;
+    using score_type = typename score_matrix_t::score_type;
 
     class iterator;
     class sentinel;
