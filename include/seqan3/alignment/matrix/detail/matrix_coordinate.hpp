@@ -94,6 +94,9 @@ template <typename index_t>
 //!\endcond
 struct matrix_index
 {
+    //!\brief The type of the stored row and column index.
+    using index_type = index_t;
+
     /*!\name Constructors, destructor and assignment
      * \{
      */

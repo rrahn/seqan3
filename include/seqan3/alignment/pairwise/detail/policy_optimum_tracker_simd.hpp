@@ -20,7 +20,6 @@
 #include <seqan3/core/simd/simd_algorithm.hpp>
 #include <seqan3/core/simd/simd_traits.hpp>
 #include <seqan3/range/views/zip.hpp>
-#include <seqan3/utility/type_traits/lazy_conditional.hpp>
 
 namespace seqan3::detail
 {
@@ -84,32 +83,46 @@ struct max_score_updater_simd_global
  * \ingroup pairwise_alignment
  * \copydetails seqan3::detail::policy_optimum_tracker
  */
-template <typename alignment_configuration_t, std::semiregular optimum_updater_t>
+template <typename score_t, typename matrix_coordinate_t, std::semiregular optimum_updater_t>
 //!\cond
-    requires is_type_specialisation_of_v<alignment_configuration_t, configuration> &&
-             std::invocable<optimum_updater_t,
-                            typename alignment_configuration_traits<alignment_configuration_t>::score_type &,
-                            typename alignment_configuration_traits<alignment_configuration_t>::matrix_coordinate_type &,
-                            typename alignment_configuration_traits<alignment_configuration_t>::score_type,
-                            typename alignment_configuration_traits<alignment_configuration_t>::matrix_coordinate_type>
+    requires simd_concept<score_t> &&
+             is_type_specialisation_of_v<matrix_coordinate_t, matrix_index> &&
+             std::invocable<optimum_updater_t, score_t &, matrix_coordinate_t &, score_t, matrix_coordinate_t>
 //!\endcond
 class policy_optimum_tracker_simd :
-    protected policy_optimum_tracker<alignment_configuration_t, optimum_updater_t>
+    protected policy_optimum_tracker<score_t, matrix_coordinate_t, optimum_updater_t>
 {
 protected:
+    // ----------------------------------------------------------------------------
+    // type definitions
+    // ----------------------------------------------------------------------------
+
     //!\brief The type of the base class.
-    using base_policy_t = policy_optimum_tracker<alignment_configuration_t, optimum_updater_t>;
-
-    // Import the configured score type.
-    using typename base_policy_t::traits_type;
+    using base_policy_t = policy_optimum_tracker<score_t, matrix_coordinate_t, optimum_updater_t>;
+    // Import the score and matrix coordinate type.
     using typename base_policy_t::score_type;
+    using typename base_policy_t::matrix_coordinate_type;
 
-    //!\brief The scalar type of the simd vector.
-    using scalar_type = typename simd::simd_traits<score_type>::scalar_type;
-    //!\brief The original non-simd score type.
-    using original_score_type = typename traits_type::original_score_type;
+    //!\brief The original score type wrapped by the simd vector type.
+    using original_score_type = typename simd_traits<score_type>::scalar_type;
+    //!\brief The matrix index type (must also be a simd vector type).
+    using matrix_index_type = typename matrix_coordinate_type::index_type;
 
-    static_assert(simd_concept<score_type>, "Must be a simd type!");
+    static_assert(simd_concept<matrix_index_type>, "The matrix coordinate must use simd vector as index type.");
+    static_assert(simd_traits<matrix_index_type>::length == simd_traits<score_type>::length,
+                  "The simd matrix index type and the simd score type must have the same length, i.e. the same number "
+                  "of elements stored in one simd vector.");
+
+    // ----------------------------------------------------------------------------
+    // static members
+    // ----------------------------------------------------------------------------
+
+    //!\brief The number of alignment instances per simd vector computed concurrently.
+    static constexpr size_t alignments_per_vector = simd_traits<score_type>::length;
+
+    // ----------------------------------------------------------------------------
+    // non-static members
+    // ----------------------------------------------------------------------------
 
     // Import base variables into class scope.
     using base_policy_t::compare_and_set_optimum;
@@ -117,6 +130,10 @@ protected:
     using base_policy_t::optimal_coordinate;
     //!\brief The individual offsets used for padding the sequences.
     std::array<original_score_type, simd_traits<score_type>::length> padding_offsets{};
+
+    // ----------------------------------------------------------------------------
+    // member functions
+    // ----------------------------------------------------------------------------
 
     /*!\name Constructors, destructor and assignment
      * \{
@@ -136,6 +153,10 @@ protected:
      * Initialises the object to always track the last row and column, since this is needed for the vectorised global
      * alignment.
      */
+    template <typename alignment_configuration_t>
+    //!\cond
+        requires is_type_specialisation_of_v<alignment_configuration_t, configuration>
+    //!\endcond
     policy_optimum_tracker_simd(alignment_configuration_t const & config) : base_policy_t{config}
     {
         base_policy_t::test_last_row_cell = true;
@@ -146,7 +167,7 @@ protected:
     //!\copydoc seqan3::detail::policy_optimum_tracker::reset_optimum
     void reset_optimum()
     {
-        optimal_score = simd::fill<score_type>(std::numeric_limits<scalar_type>::lowest());
+        optimal_score = simd::fill<score_type>(std::numeric_limits<original_score_type>::lowest());
     }
 
     /*!\brief Initialises the tracker and possibly the binary update operation.
@@ -199,13 +220,11 @@ protected:
     void initialise_tracker(sequence1_collection_t & sequence1_collection,
                             sequence2_collection_t & sequence2_collection)
     {
-        using index_t = typename traits_type::matrix_index_type;
-        using scalar_index_t = typename simd_traits<index_t>::scalar_type;
+        original_score_type largest_sequence1_size{};
+        original_score_type largest_sequence2_size{};
 
-        scalar_index_t largest_sequence1_size{};
-        scalar_index_t largest_sequence2_size{};
-        alignas(alignof(index_t)) std::array<scalar_index_t, traits_type::alignments_per_vector> sequence1_sizes{};
-        alignas(alignof(index_t)) std::array<scalar_index_t, traits_type::alignments_per_vector> sequence2_sizes{};
+        alignas(alignof(matrix_index_type)) std::array<original_score_type, alignments_per_vector> sequence1_sizes{};
+        alignas(alignof(matrix_index_type)) std::array<original_score_type, alignments_per_vector> sequence2_sizes{};
 
         // First, get all dimensions from the sequences and keep track of the maximal size in either dimension.
         size_t sequence_count{};
@@ -233,8 +252,8 @@ protected:
         }
 
         // Load the target coordinate indices from the respective arrays.
-        optimal_coordinate.col = simd::load<index_t>(sequence1_sizes.data());
-        optimal_coordinate.row = simd::load<index_t>(sequence2_sizes.data());
+        optimal_coordinate.col = simd::load<matrix_index_type>(sequence1_sizes.data());
+        optimal_coordinate.row = simd::load<matrix_index_type>(sequence2_sizes.data());
     }
 };
 } // namespace seqan3::detail
