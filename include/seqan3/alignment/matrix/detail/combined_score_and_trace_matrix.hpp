@@ -49,9 +49,6 @@ template <std::ranges::input_range score_matrix_t, std::ranges::input_range trac
 class combined_score_and_trace_matrix
 {
 private:
-    //!\brief The score type extracted from the score matrix. (TODO: make this less complicated by exposing the score type).
-    using score_type = remove_cvref_t<std::tuple_element_t<0, range_innermost_value_t<score_matrix_t>>>;
-
     class iterator;
     class sentinel;
 
@@ -61,6 +58,9 @@ private:
     trace_matrix_t trace_matrix{};
 
 public:
+    //!\brief The underlying score type.
+    using score_type = typename score_matrix_t::score_type;
+
     /*!\name Constructors, destructor and assignment
      * \{
      */
