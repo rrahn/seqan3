@@ -72,6 +72,9 @@ private:
     size_t number_of_columns{};
 
 public:
+    //!\brief The underlying score type.
+    using score_type = score_t;
+
     /*!\name Constructors, destructor and assignment
      * \{
      */
