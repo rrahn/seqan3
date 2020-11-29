@@ -53,6 +53,25 @@ template <typename sequence1_id_t,
           typename trace_debug_matrix_t = std::nullopt_t *>
 struct alignment_result_value_type
 {
+    //!\brief The type denoting that a field was not set.
+    using disabled_t = std::nullopt_t *;
+    //!\brief A flag indicating that the sequence1 id is set.
+    static constexpr bool has_sequence1_id = !std::is_same_v<sequence1_id_t, disabled_t>;
+    //!\brief A flag indicating that the sequence2 id is set.
+    static constexpr bool has_sequence2_id = !std::is_same_v<sequence2_id_t, disabled_t>;
+    //!\brief A flag indicating that the score is set.
+    static constexpr bool has_score = !std::is_same_v<score_t, disabled_t>;
+    //!\brief A flag indicating that the end position is set.
+    static constexpr bool has_end_positions = !std::is_same_v<end_positions_t, disabled_t>;
+    //!\brief A flag indicating that the begin position is set.
+    static constexpr bool has_begin_positions = !std::is_same_v<begin_positions_t, disabled_t>;
+    //!\brief A flag indicating that the alignment is set.
+    static constexpr bool has_alignment = !std::is_same_v<alignment_t, disabled_t>;
+    //!\brief A flag indicating that the debug score matrix is set.
+    static constexpr bool has_debug_score_matrix = !std::is_same_v<score_debug_matrix_t, disabled_t>;
+    //!\brief A flag indicating that the debug trace matrix is set.
+    static constexpr bool has_debug_trace_matrix = !std::is_same_v<trace_debug_matrix_t, disabled_t>;
+
     //! \brief The alignment identifier for the first sequence.
     sequence1_id_t sequence1_id{};
     //! \brief The alignment identifier for the second sequence.
@@ -398,18 +417,8 @@ template <typename char_t, typename alignment_result_t>
 //!\endcond
 inline debug_stream_type<char_t> & operator<<(debug_stream_type<char_t> & stream, alignment_result_t && result)
 {
-    using disabled_t = std::nullopt_t *;
     using result_data_t =
         typename detail::alignment_result_value_type_accessor<std::remove_cvref_t<alignment_result_t>>::type;
-
-    constexpr bool has_sequence1_id = !std::is_same_v<decltype(std::declval<result_data_t>().sequence1_id), disabled_t>;
-    constexpr bool has_sequence2_id = !std::is_same_v<decltype(std::declval<result_data_t>().sequence2_id), disabled_t>;
-    constexpr bool has_score = !std::is_same_v<decltype(std::declval<result_data_t>().score), disabled_t>;
-    constexpr bool has_end_positions = !std::is_same_v<decltype(std::declval<result_data_t>().end_positions),
-                                                       disabled_t>;
-    constexpr bool has_begin_positions = !std::is_same_v<decltype(std::declval<result_data_t>().begin_positions),
-                                                         disabled_t>;
-    constexpr bool has_alignment = !std::is_same_v<decltype(std::declval<result_data_t>().alignment), disabled_t>;
 
     bool prepend_comma = false;
     auto append_to_stream = [&] (auto && ...args)
@@ -419,17 +428,17 @@ inline debug_stream_type<char_t> & operator<<(debug_stream_type<char_t> & stream
     };
 
     stream << '{';
-    if constexpr (has_sequence1_id)
+    if constexpr (result_data_t::has_sequence1_id)
         append_to_stream("sequence1 id: ", result.sequence1_id());
-    if constexpr (has_sequence2_id)
+    if constexpr (result_data_t::has_sequence2_id)
         append_to_stream("sequence2 id: ", result.sequence2_id());
-    if constexpr (has_score)
+    if constexpr (result_data_t::has_score)
         append_to_stream("score: ", result.score());
-    if constexpr (has_begin_positions)
+    if constexpr (result_data_t::has_begin_positions)
         append_to_stream("begin: (", result.sequence1_begin_position(), ",", result.sequence2_begin_position(), ")");
-    if constexpr (has_end_positions)
+    if constexpr (result_data_t::has_end_positions)
         append_to_stream("end: (", result.sequence1_end_position(), ",", result.sequence2_end_position(), ")");
-    if constexpr (has_alignment)
+    if constexpr (result_data_t::has_alignment)
         append_to_stream("\nalignment:\n", result.alignment());
     stream << '}';
 
