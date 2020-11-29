@@ -29,18 +29,15 @@
 #include <seqan3/alignment/pairwise/detail/pairwise_alignment_algorithm_banded.hpp>
 #include <seqan3/alignment/pairwise/detail/policy_alignment_matrix.hpp>
 #include <seqan3/alignment/pairwise/detail/policy_alignment_algorithm_logger.hpp>
-#include <seqan3/alignment/pairwise/detail/policy_scoring_scheme.hpp>
 #include <seqan3/alignment/pairwise/detail/select_recursion_policy.hpp>
 #include <seqan3/alignment/pairwise/detail/select_result_builder_policy.hpp>
 #include <seqan3/alignment/pairwise/detail/select_optimum_tracker_policy.hpp>
+#include <seqan3/alignment/pairwise/detail/select_scoring_scheme_policy.hpp>
 #include <seqan3/alignment/pairwise/detail/type_traits.hpp>
 #include <seqan3/alignment/pairwise/edit_distance_algorithm.hpp>
 #include <seqan3/alignment/pairwise/align_result_selector.hpp>
 #include <seqan3/alignment/pairwise/alignment_result.hpp>
-#include <seqan3/alignment/scoring/detail/simd_match_mismatch_scoring_scheme.hpp>
-#include <seqan3/alignment/scoring/detail/simd_matrix_scoring_scheme.hpp>
 #include <seqan3/alignment/scoring/nucleotide_scoring_scheme.hpp>
-#include <seqan3/alignment/scoring/aminoacid_scoring_scheme.hpp>
 #include <seqan3/core/concept/tuple.hpp>
 #include <seqan3/core/detail/deferred_crtp_base.hpp>
 #include <seqan3/core/detail/empty_type.hpp>
@@ -185,6 +182,18 @@ public:
         // Define the function wrapper type.
         using function_wrapper_t = std::function<void(indexed_sequence_pair_chunk_t, callback_on_result_t)>;
 
+        // ----------------------------------------------------------------------------
+        // alphabet_type
+        // ----------------------------------------------------------------------------
+
+        using seq1_alphabet_t = std::ranges::range_value_t<first_seq_t>;
+        using seq2_alphabet_t = std::ranges::range_value_t<second_seq_t>;
+        using alphabet_t = std::common_type_t<seq1_alphabet_t, seq2_alphabet_t>;
+
+        // ----------------------------------------------------------------------------
+        // Update configuration
+        // ----------------------------------------------------------------------------
+
         // Capture the alignment result type.
         auto config_with_result_type = config_with_output | align_cfg::detail::result_type<alignment_result_t>{};
 
@@ -252,7 +261,7 @@ public:
             throw invalid_alignment_configuration{"The align_cfg::min_score configuration is only allowed for the "
                                                   "specific edit distance computation."};
         // Configure the alignment algorithm.
-        return std::pair{make_algorithm<function_wrapper_t>(config_with_result_type),
+        return std::pair{make_algorithm<function_wrapper_t, alphabet_t>(config_with_result_type),
                          config_with_result_type};
     }
 
@@ -343,6 +352,7 @@ private:
     /*!\brief Constructs the actual alignment algorithm wrapped in the passed std::function object.
      *
      * \tparam function_wrapper_t The invocable alignment function type-erased via std::function.
+     * \tparam alphabet_t The common type of the alphabet of the two sequences.
      * \tparam config_t The alignment configuration type.
      *
      * \param[in] cfg The passed configuration object.
@@ -353,7 +363,7 @@ private:
      *
      * Configures the matrix and the gap policy and constructs the algorithm with the configured policies.
      */
-    template <typename function_wrapper_t, typename config_t>
+    template <typename function_wrapper_t, typename alphabet_t, typename config_t>
     static constexpr function_wrapper_t make_algorithm(config_t const & cfg)
     {
         using traits_t = alignment_configuration_traits<config_t>;
@@ -380,39 +390,12 @@ private:
         // Configure the scoring scheme policy.
         //----------------------------------------------------------------------------------------------------------
 
-        using alignment_method_t = std::conditional_t<traits_t::is_global,
-                                                      seqan3::align_cfg::method_global,
-                                                      seqan3::align_cfg::method_local>;
-
-        using score_t = typename traits_t::score_type;
-        using scoring_scheme_t = typename traits_t::scoring_scheme_type;
-        constexpr bool is_aminoacid_scheme = is_type_specialisation_of_v<scoring_scheme_t, aminoacid_scoring_scheme>;
-
-        using simple_simd_scheme_t = lazy_conditional_t<traits_t::is_vectorised,
-                                                        lazy<simd_match_mismatch_scoring_scheme,
-                                                             score_t,
-                                                             typename traits_t::scoring_scheme_alphabet_type,
-                                                             alignment_method_t>,
-                                                        void>;
-        using matrix_simd_scheme_t = lazy_conditional_t<traits_t::is_vectorised,
-                                                        lazy<simd_matrix_scoring_scheme,
-                                                             score_t,
-                                                             typename traits_t::scoring_scheme_alphabet_type,
-                                                             alignment_method_t>,
-                                                        void>;
-
-        using alignment_scoring_scheme_t = std::conditional_t<traits_t::is_vectorised,
-                                                              std::conditional_t<is_aminoacid_scheme,
-                                                                                 matrix_simd_scheme_t,
-                                                                                 simple_simd_scheme_t>,
-                                                              scoring_scheme_t>;
-
-        using scoring_scheme_policy_t = policy_scoring_scheme<config_t, alignment_scoring_scheme_t>;
+        using scoring_scheme_policy_t = select_scoring_scheme_policy_t<traits_t, alphabet_t>;
 
         //----------------------------------------------------------------------------------------------------------
         // Configure the alignment matrix policy.
         //----------------------------------------------------------------------------------------------------------
-
+        using score_t = typename traits_t::score_type;
         using score_matrix_t = score_matrix_single_column<score_t>;
         using trace_matrix_t = trace_matrix_full<typename traits_t::trace_type>;
 

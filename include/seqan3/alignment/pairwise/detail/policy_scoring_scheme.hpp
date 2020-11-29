@@ -13,6 +13,8 @@
 #pragma once
 
 #include <seqan3/alignment/configuration/align_config_scoring_scheme.hpp>
+#include <seqan3/core/algorithm/configuration.hpp>
+#include <seqan3/core/detail/template_inspection.hpp>
 #include <seqan3/core/simd/concept.hpp>
 
 namespace seqan3::detail
@@ -21,15 +23,13 @@ namespace seqan3::detail
 /*!\brief Stores the configured scoring scheme used for this algorithm.
  * \ingroup pairwise_alignment
  *
- * \tparam alignment_configuration_t The type of the alignment configuration; must be a type specialisation of
- *                                   seqan3::configuration.
  * \tparam scoring_scheme_t The type of the scoring scheme.
  *
  * \details
  *
  * Stores and initialises the configured scoring scheme from the given alignment configuration.
  */
-template <typename alignment_configuration_t, typename scoring_scheme_t>
+template <typename scoring_scheme_t>
 class policy_scoring_scheme
 {
 protected:
@@ -49,6 +49,10 @@ protected:
     /*!\brief Construction and initialisation using the alignment configuration.
      * \param[in] config The alignment configuration with the stored scoring scheme.
      */
+    template <typename alignment_configuration_t>
+    //!\cond
+        requires is_type_specialisation_of_v<alignment_configuration_t, configuration>
+    //!\endcond
     explicit policy_scoring_scheme(alignment_configuration_t const & config) :
         scoring_scheme{seqan3::get<align_cfg::scoring_scheme>(config).scheme}
     {}
