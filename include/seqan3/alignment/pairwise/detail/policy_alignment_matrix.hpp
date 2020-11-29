@@ -13,9 +13,12 @@
 #pragma once
 
 #include <tuple>
+#include <seqan3/std/concepts>
 
 #include <seqan3/alignment/exception.hpp>
-#include <seqan3/alignment/matrix/detail/coordinate_matrix.hpp>
+#include <seqan3/alignment/matrix/detail/combined_score_and_trace_matrix.hpp>
+#include <seqan3/alignment/matrix/detail/trace_iterator.hpp>
+#include <seqan3/alignment/matrix/detail/trace_matrix_simd_adapter_iterator.hpp>
 #include <seqan3/alignment/pairwise/detail/type_traits.hpp>
 #include <seqan3/core/configuration/configuration.hpp>
 #include <seqan3/core/detail/template_inspection.hpp>
@@ -26,10 +29,8 @@ namespace seqan3::detail
 /*!\brief A policy that provides a common interface to acquire the correct alignment matrices.
  * \ingroup pairwise_alignment
  *
- * \tparam traits_t The alignment configuration traits type; must be an instance of
- *                  seqan3::detail::alignment_configuration_traits.
- * \tparam alignment_matrix_t The type of the alignment matrix for this alignment configuration
- *                            [see requirements below].
+ * \tparam alignment_matrix_t The type of the alignment matrix [see requirements below].
+ * \tparam coordinate_matrix_t The type of the coordinate matrix [see requirements below].
  *
  * \details
  *
@@ -37,21 +38,21 @@ namespace seqan3::detail
  * a resize member function that takes a seqan3::detail::column_index_type and seqan3::detail::row_index_type and an
  * additional parameter to initialise the allocated matrix memory.
  */
-template <typename traits_t, typename alignment_matrix_t>
+template <typename alignment_matrix_t, typename coordinate_matrix_t>
 //!\cond
-    requires (is_type_specialisation_of_v<traits_t, alignment_configuration_traits> &&
-              requires (alignment_matrix_t & matrix, typename traits_t::score_type const initial_score)
-              {
-                  { matrix.resize(column_index_type{size_t{}}, row_index_type{size_t{}}, initial_score) };
-              })
+    requires requires (alignment_matrix_t & alignment_matrix,
+                       coordinate_matrix_t & index_matrix,
+                       typename alignment_matrix_t::score_type const initial_score)
+             {
+                 { alignment_matrix.resize(column_index_type{size_t{}}, row_index_type{size_t{}}, initial_score) };
+                 { index_matrix.resize(column_index_type{size_t{}}, row_index_type{size_t{}}) };
+             }
 //!\endcond
 class policy_alignment_matrix
 {
 protected:
-    //!\brief The configured score type.
-    using score_type = typename traits_t::score_type;
-    //!\brief The configured matrix index type to store the coordinates.
-    using matrix_index_type = typename traits_t::matrix_index_type;
+    //!\brief The underlying score type of the alignment matrix.
+    using score_type = typename alignment_matrix_t::score_type;
 
     //!\brief The selected lower diagonal.
     int32_t lower_diagonal{};
@@ -61,6 +62,10 @@ protected:
     bool last_column_is_free{};
     //!\brief A flag indicating whether the final gaps in the last row are free.
     bool last_row_is_free{};
+    //!\brief A flag indicating global alignment.
+    bool is_global{};
+    //!\brief A flag indicating banded alignment.
+    bool is_banded{};
 
     /*!\name Constructors, destructor and assignment
      * \{
@@ -93,6 +98,9 @@ protected:
     {
         using seqan3::get;
 
+        is_global = config.template exists<align_cfg::method_global>();
+        is_banded = config.template exists<align_cfg::band_fixed_size>();
+
         auto band = config.get_or(seqan3::align_cfg::band_fixed_size{});
 
         lower_diagonal = band.lower_diagonal;
@@ -101,9 +109,9 @@ protected:
         bool invalid_band = upper_diagonal < lower_diagonal;
         std::string error_cause = (invalid_band) ? " The upper diagonal is smaller than the lower diagonal." : "";
 
-        if constexpr (traits_t::is_global)
+        if (is_global)
         {
-            auto method_global_config = get<seqan3::align_cfg::method_global>(config);
+            auto method_global_config = config.get_or(align_cfg::method_global{});
 
             bool first_row_is_free = method_global_config.free_end_gaps_sequence1_leading;
             bool first_column_is_free = method_global_config.free_end_gaps_sequence2_leading;
@@ -151,19 +159,19 @@ protected:
         assert(sequence1_size < static_cast<uint64_t>(std::numeric_limits<int64_t>::max()));
         assert(sequence2_size < static_cast<uint64_t>(std::numeric_limits<int64_t>::max()));
 
-        if constexpr (traits_t::is_banded)
+        if (is_banded)
             check_valid_band_configuration(sequence1_size, sequence2_size);
 
         static thread_local alignment_matrix_t alignment_matrix{};
-        static thread_local coordinate_matrix<matrix_index_type> index_matrix{};
+        static thread_local coordinate_matrix_t coordinate_matrix{};
 
         // Increase dimension by one for the initialisation of the matrix.
         size_t const column_count = sequence1_size + 1;
         size_t row_count = sequence2_size + 1;
 
-        index_matrix.resize(column_index_type{column_count}, row_index_type{row_count});
+        coordinate_matrix.resize(column_index_type{column_count}, row_index_type{row_count});
 
-        if constexpr (traits_t::is_banded)
+        if (is_banded)
         {
             assert(upper_diagonal - lower_diagonal + 1 > 0); // Band size is a positive integer.
             // Allocate one more cell to compute the last cell of the band with standard recursion function.
@@ -172,7 +180,7 @@ protected:
 
         alignment_matrix.resize(column_index_type{column_count}, row_index_type{row_count}, initial_score);
 
-        return std::tie(alignment_matrix, index_matrix);
+        return std::tie(alignment_matrix, coordinate_matrix);
     }
 
     /*!\brief Checks whether the band is valid for the given sequence sizes.
@@ -191,7 +199,7 @@ protected:
         bool invalid_band = false;
         std::string error_cause{};
 
-        if constexpr (traits_t::is_global)
+        if (is_global)
         {
             // band ends in last column without free gaps or band ends in last row without free gaps.
             invalid_band |= (lower_diagonal_ends_behind_last_cell && !last_column_is_free) ||

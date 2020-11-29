@@ -20,15 +20,11 @@
 
 #include <seqan3/alignment/configuration/align_config_output.hpp>
 #include <seqan3/alignment/configuration/align_config_result_type.hpp>
-#include <seqan3/alignment/matrix/detail/combined_score_and_trace_matrix.hpp>
-#include <seqan3/alignment/matrix/detail/score_matrix_single_column.hpp>
-#include <seqan3/alignment/matrix/detail/trace_matrix_full.hpp>
-#include <seqan3/alignment/matrix/detail/two_dimensional_matrix.hpp>
 #include <seqan3/alignment/pairwise/detail/concept.hpp>
 #include <seqan3/alignment/pairwise/detail/pairwise_alignment_algorithm.hpp>
 #include <seqan3/alignment/pairwise/detail/pairwise_alignment_algorithm_banded.hpp>
-#include <seqan3/alignment/pairwise/detail/policy_alignment_matrix.hpp>
 #include <seqan3/alignment/pairwise/detail/policy_alignment_algorithm_logger.hpp>
+#include <seqan3/alignment/pairwise/detail/select_alignment_matrix_policy.hpp>
 #include <seqan3/alignment/pairwise/detail/select_recursion_policy.hpp>
 #include <seqan3/alignment/pairwise/detail/select_result_builder_policy.hpp>
 #include <seqan3/alignment/pairwise/detail/select_optimum_tracker_policy.hpp>
@@ -394,15 +390,8 @@ private:
         //----------------------------------------------------------------------------------------------------------
         // Configure the alignment matrix policy.
         //----------------------------------------------------------------------------------------------------------
-        using score_t = typename traits_t::score_type;
-        using score_matrix_t = score_matrix_single_column<score_t>;
-        using trace_matrix_t = trace_matrix_full<typename traits_t::trace_type>;
 
-        using alignment_matrix_t = std::conditional_t<traits_t::requires_trace_information,
-                                                      combined_score_and_trace_matrix<score_matrix_t,
-                                                                                      trace_matrix_t>,
-                                                      score_matrix_t>;
-        using alignment_matrix_policy_t = policy_alignment_matrix<traits_t, alignment_matrix_t>;
+        using alignment_matrix_policy_t = select_alignment_matrix_policy_t<traits_t>;
 
         //----------------------------------------------------------------------------------------------------------
         // Configure the final alignment algorithm.
