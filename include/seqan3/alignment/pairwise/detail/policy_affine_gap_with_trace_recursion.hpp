@@ -12,6 +12,8 @@
 
 #pragma once
 
+#include <seqan3/std/concepts>
+
 #include <seqan3/alignment/pairwise/detail/policy_affine_gap_recursion.hpp>
 
 namespace seqan3::detail
@@ -21,21 +23,26 @@ namespace seqan3::detail
  *        information.
  * \ingroup pairwise_alignment
  * \copydetails seqan3::detail::policy_affine_gap_recursion
+ *
+ * \todo Maybe document trace_t. But we might also get rid of the template argument completely. Check this later.
  */
-template <typename alignment_configuration_t>
-class policy_affine_gap_with_trace_recursion : protected policy_affine_gap_recursion<alignment_configuration_t>
+template <typename score_t, typename trace_t, bool truncate_score>
+//!\cond
+    requires (arithmetic<score_t> || simd_concept<score_t>) &&
+             (std::same_as<trace_t, trace_directions> || simd_concept<trace_t>)
+//!\endcond
+class policy_affine_gap_with_trace_recursion : protected policy_affine_gap_recursion<score_t, truncate_score>
 {
 protected:
     //!\brief The type of the base policy.
-    using base_t = policy_affine_gap_recursion<alignment_configuration_t>;
+    using base_t = policy_affine_gap_recursion<score_t, truncate_score>;
 
     // Import base types.
-    using typename base_t::traits_type;
     using typename base_t::score_type;
     using typename base_t::affine_score_tuple_t;
 
     //!\brief The trace type to use.
-    using trace_type = typename traits_type::trace_type;
+    using trace_type = trace_t;
     //!\brief The internal tuple storing the trace directions of an affine cell.
     using affine_trace_tuple_t = std::tuple<trace_type, trace_type, trace_type>;
     //!\brief The affine cell type returned by the functions.
@@ -60,6 +67,10 @@ protected:
     ~policy_affine_gap_with_trace_recursion() = default; //!< Defaulted.
 
     //!\copydoc seqan3::detail::policy_affine_gap_recursion::policy_affine_gap_recursion
+    template <typename alignment_configuration_t>
+    //!\cond
+        requires is_type_specialisation_of_v<alignment_configuration_t, configuration>
+    //!\endcond
     explicit policy_affine_gap_with_trace_recursion(alignment_configuration_t const & config) : base_t{config}
     {}
     //!\}
