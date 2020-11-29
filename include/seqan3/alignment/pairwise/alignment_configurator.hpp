@@ -29,12 +29,9 @@
 #include <seqan3/alignment/pairwise/detail/pairwise_alignment_algorithm_banded.hpp>
 #include <seqan3/alignment/pairwise/detail/policy_alignment_matrix.hpp>
 #include <seqan3/alignment/pairwise/detail/policy_alignment_result_builder.hpp>
-#include <seqan3/alignment/pairwise/detail/policy_affine_gap_recursion.hpp>
-#include <seqan3/alignment/pairwise/detail/policy_affine_gap_recursion_banded.hpp>
-#include <seqan3/alignment/pairwise/detail/policy_affine_gap_with_trace_recursion.hpp>
-#include <seqan3/alignment/pairwise/detail/policy_affine_gap_with_trace_recursion_banded.hpp>
 #include <seqan3/alignment/pairwise/detail/policy_alignment_algorithm_logger.hpp>
 #include <seqan3/alignment/pairwise/detail/policy_scoring_scheme.hpp>
+#include <seqan3/alignment/pairwise/detail/select_recursion_policy.hpp>
 #include <seqan3/alignment/pairwise/detail/select_optimum_tracker_policy.hpp>
 #include <seqan3/alignment/pairwise/detail/type_traits.hpp>
 #include <seqan3/alignment/pairwise/edit_distance_algorithm.hpp>
@@ -127,34 +124,6 @@ private:
     using select_alignment_algorithm_t = lazy_conditional_t<traits_t::is_banded,
                                                             lazy<pairwise_alignment_algorithm_banded, args_t...>,
                                                             lazy<pairwise_alignment_algorithm, args_t...>>;
-
-    /*!\brief Selects the gap recursion policy.
-     * \tparam config_t The alignment configuration type.
-     */
-    template <typename config_t>
-    struct select_gap_recursion_policy
-    {
-    private:
-        //!\brief The traits type.
-        using traits_type = alignment_configuration_traits<config_t>;
-        //!\brief A flag indicating if trace is required.
-        static constexpr bool with_trace = traits_type::requires_trace_information;
-
-        //!\brief The gap recursion policy.
-        using gap_recursion_policy_type = std::conditional_t<with_trace,
-                                                             policy_affine_gap_with_trace_recursion<config_t>,
-                                                             policy_affine_gap_recursion<config_t>>;
-        //!\brief The banded gap recursion policy.
-        using banded_gap_recursion_policy_type =
-                    std::conditional_t<with_trace,
-                                       policy_affine_gap_with_trace_recursion_banded<config_t>,
-                                       policy_affine_gap_recursion_banded<config_t>>;
-    public:
-        //!\brief The configured recursion policy.
-        using type = std::conditional_t<traits_type::is_banded,
-                                        banded_gap_recursion_policy_type,
-                                        gap_recursion_policy_type>;
-    };
 
 public:
     /*!\brief Configures the algorithm.
@@ -398,7 +367,7 @@ private:
         // Configure the gap scheme policy.
         //----------------------------------------------------------------------------------------------------------
 
-        using gap_cost_policy_t = typename select_gap_recursion_policy<config_t>::type;
+        using gap_cost_policy_t = select_recursion_policy_t<traits_t>;
 
         //----------------------------------------------------------------------------------------------------------
         // Configure the result builder policy.

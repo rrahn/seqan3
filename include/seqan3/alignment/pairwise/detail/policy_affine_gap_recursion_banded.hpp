@@ -21,14 +21,16 @@ namespace seqan3::detail
  * \ingroup pairwise_alignment
  * \copydetails seqan3::detail::policy_affine_gap_recursion
  */
-template <typename alignment_configuration_t>
-class policy_affine_gap_recursion_banded : protected policy_affine_gap_recursion<alignment_configuration_t>
+template <typename score_t, bool truncate_score>
+//!\cond
+    requires arithmetic<score_t> || simd_concept<score_t>
+//!\endcond
+class policy_affine_gap_recursion_banded : protected policy_affine_gap_recursion<score_t, truncate_score>
 {
 protected:
     //!\brief The type of the base policy.
-    using base_t = policy_affine_gap_recursion<alignment_configuration_t>;
+    using base_t = policy_affine_gap_recursion<score_t, truncate_score>;
     // Import base types
-    using typename base_t::traits_type;
     using typename base_t::score_type;
     using typename base_t::affine_cell_type;
 
@@ -55,6 +57,10 @@ protected:
      * If no gap cost model was provided by the user the default gap costs `-10` and `-1` are set for the gap open score
      * and the gap extension score respectively.
      */
+    template <typename alignment_configuration_t>
+    //!\cond
+        requires is_type_specialisation_of_v<alignment_configuration_t, configuration>
+    //!\endcond
     explicit policy_affine_gap_recursion_banded(alignment_configuration_t const & config) : base_t{config}
     {}
     //!\}

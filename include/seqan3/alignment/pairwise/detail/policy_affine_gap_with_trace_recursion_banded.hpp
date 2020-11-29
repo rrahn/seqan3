@@ -22,15 +22,18 @@ namespace seqan3::detail
  * \ingroup pairwise_alignment
  * \copydetails seqan3::detail::policy_affine_gap_recursion
  */
-template <typename alignment_configuration_t>
+template <typename score_t, typename trace_t, bool truncate_score>
+//!\cond
+    requires (arithmetic<score_t> || simd_concept<score_t>) &&
+             (std::same_as<trace_t, trace_directions> || simd_concept<trace_t>)
+//!\endcond
 class policy_affine_gap_with_trace_recursion_banded :
-    protected policy_affine_gap_with_trace_recursion<alignment_configuration_t>
+    protected policy_affine_gap_with_trace_recursion<score_t, trace_t, truncate_score>
 {
 protected:
     //!\brief The type of the base policy.
-    using base_t = policy_affine_gap_with_trace_recursion<alignment_configuration_t>;
+    using base_t = policy_affine_gap_with_trace_recursion<score_t, trace_t, truncate_score>;
     // Import base types.
-    using typename base_t::traits_type;
     using typename base_t::score_type;
     using typename base_t::affine_cell_type;
     using typename base_t::trace_type;
@@ -54,6 +57,10 @@ protected:
     ~policy_affine_gap_with_trace_recursion_banded() = default; //!< Defaulted.
 
     //!\copydoc seqan3::detail::policy_affine_gap_recursion::policy_affine_gap_recursion
+    template <typename alignment_configuration_t>
+    //!\cond
+        requires is_type_specialisation_of_v<alignment_configuration_t, configuration>
+    //!\endcond
     explicit policy_affine_gap_with_trace_recursion_banded(alignment_configuration_t const & config) : base_t{config}
     {}
     //!\}

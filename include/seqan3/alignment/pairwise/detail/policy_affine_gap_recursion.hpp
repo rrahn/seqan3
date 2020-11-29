@@ -29,7 +29,9 @@ namespace seqan3::detail
 /*!\brief Implements the alignment recursion function for the alignment algorithm using affine gap costs.
  * \ingroup pairwise_alignment
  *
- * \tparam alignment_configuration_t The type of the alignment configuration.
+ * \tparam score_t The type of the score; must model seqan3::arithmetic or seqan3::simd::simd_concept.
+ * \tparam truncate_score A non-type boolean template parameter to enable truncating the score at 0, i.e. no negative
+ *                        scores can be computed.
  *
  * \details
  *
@@ -41,20 +43,32 @@ namespace seqan3::detail
  *       GOTOH, Osamu. An improved algorithm for matching biological sequences.
  *       Journal of molecular biology, 1982, 162. Jg., Nr. 3, S. 705-708.
  */
-template <typename alignment_configuration_t>
+template <typename score_t, bool truncate_score>
+//!\cond
+    requires arithmetic<score_t> || simd_concept<score_t>
+//!\endcond
 class policy_affine_gap_recursion
 {
 protected:
-    //!\brief The configuration traits type.
-    using traits_type = alignment_configuration_traits<alignment_configuration_t>;
-    //!\brief The configured original score type.
-    using original_score_type = typename traits_type::original_score_type;
+    // ----------------------------------------------------------------------------
+    // type definitions
+    // ----------------------------------------------------------------------------
+
     //!\brief The configured score type.
-    using score_type = typename traits_type::score_type;
+    using score_type = score_t;
     //!\brief The internal tuple storing the scores of an affine cell.
     using affine_score_tuple_t = std::tuple<score_type, score_type, score_type>;
     //!\brief The affine cell type returned by the functions.
     using affine_cell_type = affine_cell_proxy<affine_score_tuple_t>;
+    //!\brief Helper template alias to extract the scalar type of a simd type in a lazy conditional.
+    template <simd_concept simd_score_t>
+    using scalar_type = typename simd_traits<simd_score_t>::scalar_type;
+    //!\brief The configured original score type.
+    using original_score_type = lazy_conditional_t<simd_concept<score_type>, lazy<scalar_type, score_type>, score_type>;
+
+    // ----------------------------------------------------------------------------
+    // non-static member
+    // ----------------------------------------------------------------------------
 
     //!\brief The score for a gap extension.
     score_type gap_extension_score{};
@@ -65,6 +79,10 @@ protected:
     bool first_row_is_free{};
     //!\brief Initialisation state of the first column of the alignment.
     bool first_column_is_free{};
+
+    // ----------------------------------------------------------------------------
+    // member function
+    // ----------------------------------------------------------------------------
 
     /*!\name Constructors, destructor and assignment
      * \{
@@ -85,6 +103,10 @@ protected:
      * If no gap cost model was provided by the user the default gap costs `-10` and `-1` are set for the gap open score
      * and the gap extension score respectively.
      */
+    template <typename alignment_configuration_t>
+    //!\cond
+        requires is_type_specialisation_of_v<alignment_configuration_t, configuration>
+    //!\endcond
     explicit policy_affine_gap_recursion(alignment_configuration_t const & config)
     {
         // Get the gap scheme from the config or choose -1 and -10 as default.
@@ -94,9 +116,11 @@ protected:
         gap_extension_score = maybe_convert_to_simd(selected_gap_scheme.extension_score);
         gap_open_score = maybe_convert_to_simd(selected_gap_scheme.open_score) + gap_extension_score;
 
+        constexpr bool is_local = config.template exists<align_cfg::method_local>();
+
         auto method_global_config = config.get_or(align_cfg::method_global{});
-        first_row_is_free = method_global_config.free_end_gaps_sequence1_leading || traits_type::is_local;
-        first_column_is_free = method_global_config.free_end_gaps_sequence2_leading || traits_type::is_local;
+        first_row_is_free = method_global_config.free_end_gaps_sequence1_leading || is_local;
+        first_column_is_free = method_global_config.free_end_gaps_sequence2_leading || is_local;
     }
     //!\}
 
@@ -261,10 +285,11 @@ protected:
      *
      * \details
      *
-     * If the local alignment is enabled the score is set to 0 if it was negative before.
+     * If score truncation is enabled the score is set to 0 if it was negative before. This is usually a property of
+     * local alignments.
      * Optionally, the function can be called with an additional trace direction and sets it to
-     * seqan3::trace_directions::none accordingly. If the alignment does not compute a local alignment this function
-     * becomes a no-op and is likely to be optimised out by the compiler.
+     * seqan3::trace_directions::none accordingly. If score truncation is not enabled this function
+     * becomes a no-op and a call to it will be optimised out by the compiler.
      */
     template <typename ...trace_t>
     //!\cond
@@ -274,7 +299,7 @@ protected:
     void truncate_score_below_zero([[maybe_unused]] score_type & score, [[maybe_unused]] trace_t & ...trace)
         const noexcept
     {
-        if constexpr (traits_type::is_local)
+        if constexpr (truncate_score)
         {
             constexpr score_type zero_score{};
             auto cmp_mask = (score < zero_score);
