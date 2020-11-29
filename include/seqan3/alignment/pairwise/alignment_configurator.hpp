@@ -34,9 +34,8 @@
 #include <seqan3/alignment/pairwise/detail/policy_affine_gap_with_trace_recursion.hpp>
 #include <seqan3/alignment/pairwise/detail/policy_affine_gap_with_trace_recursion_banded.hpp>
 #include <seqan3/alignment/pairwise/detail/policy_alignment_algorithm_logger.hpp>
-#include <seqan3/alignment/pairwise/detail/policy_optimum_tracker_simd.hpp>
-#include <seqan3/alignment/pairwise/detail/policy_optimum_tracker.hpp>
 #include <seqan3/alignment/pairwise/detail/policy_scoring_scheme.hpp>
+#include <seqan3/alignment/pairwise/detail/select_optimum_tracker_policy.hpp>
 #include <seqan3/alignment/pairwise/detail/type_traits.hpp>
 #include <seqan3/alignment/pairwise/edit_distance_algorithm.hpp>
 #include <seqan3/alignment/pairwise/align_result_selector.hpp>
@@ -394,14 +393,7 @@ private:
         // Configure the optimum tracker policy.
         //----------------------------------------------------------------------------------------------------------
 
-        using scalar_optimum_updater_t = std::conditional_t<traits_t::is_local || !traits_t::is_banded,
-                                                            max_score_updater,
-                                                            max_score_banded_updater>;
-
-        using optimum_tracker_policy_t =
-            lazy_conditional_t<traits_t::is_vectorised,
-                               lazy<policy_optimum_tracker_simd, config_t, max_score_updater_simd_global>,
-                               lazy<policy_optimum_tracker, config_t, scalar_optimum_updater_t>>;
+        using optimum_tracker_policy_t = select_optimum_policy_t<traits_t>;
 
         //----------------------------------------------------------------------------------------------------------
         // Configure the gap scheme policy.
