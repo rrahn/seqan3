@@ -28,10 +28,10 @@
 #include <seqan3/alignment/pairwise/detail/pairwise_alignment_algorithm.hpp>
 #include <seqan3/alignment/pairwise/detail/pairwise_alignment_algorithm_banded.hpp>
 #include <seqan3/alignment/pairwise/detail/policy_alignment_matrix.hpp>
-#include <seqan3/alignment/pairwise/detail/policy_alignment_result_builder.hpp>
 #include <seqan3/alignment/pairwise/detail/policy_alignment_algorithm_logger.hpp>
 #include <seqan3/alignment/pairwise/detail/policy_scoring_scheme.hpp>
 #include <seqan3/alignment/pairwise/detail/select_recursion_policy.hpp>
+#include <seqan3/alignment/pairwise/detail/select_result_builder_policy.hpp>
 #include <seqan3/alignment/pairwise/detail/select_optimum_tracker_policy.hpp>
 #include <seqan3/alignment/pairwise/detail/type_traits.hpp>
 #include <seqan3/alignment/pairwise/edit_distance_algorithm.hpp>
@@ -373,7 +373,7 @@ private:
         // Configure the result builder policy.
         //----------------------------------------------------------------------------------------------------------
 
-        using result_builder_policy_t = policy_alignment_result_builder<config_t>;
+        using result_builder_policy_t = select_result_builder_policy_t<traits_t>;
 
         //----------------------------------------------------------------------------------------------------------
         // Configure the scoring scheme policy.
