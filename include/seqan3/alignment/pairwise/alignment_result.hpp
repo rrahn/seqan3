@@ -22,15 +22,6 @@
 namespace seqan3::detail
 {
 
-// forward declaration for friend declaration in alignment_result.
-template <typename configuration_t>
-#if !SEQAN3_WORKAROUND_GCC_93467
-//!\cond
-    requires is_type_specialisation_of_v<configuration_t, configuration>
-//!\endcond
-#endif // !SEQAN3_WORKAROUND_GCC_93467
-class policy_alignment_result_builder;
-
 /*!\brief A struct that contains the actual alignment result data.
  * \ingroup pairwise_alignment
  *
@@ -138,6 +129,79 @@ alignment_result_value_type(sequence1_id_t, sequence2_id_t, score_t, end_positio
 template <typename result_t>
 struct alignment_result_value_type_accessor;
 //!\endcond
+
+} // namespace seqan3::detail
+namespace seqan3
+{
+// forward declaration for aligment result which is needed for the alignmen result builder policy.
+//!\cond
+template <typename alignment_result_value_t>
+    requires detail::is_type_specialisation_of_v<alignment_result_value_t, detail::alignment_result_value_type>
+class alignment_result;
+//!\endcond
+
+} // namespace seqan3
+
+namespace seqan3::detail
+{
+
+// forward declaration for friend declaration in alignment_result.
+//!\cond
+template <typename result_t>
+#if !SEQAN3_WORKAROUND_GCC_93467
+    requires is_type_specialisation_of_v<result_t, alignment_result>
+#endif // !SEQAN3_WORKAROUND_GCC_93467
+class policy_alignment_result_builder;
+//!\endcond
+
+/*!\brief Manages access to the private data of the seqan3::alignment_result for the
+ *        seqan3::detail::alignment_result_builder.
+ * \ingroup pairwise_alignment
+ *
+ * \details
+ *
+ * This data structure implements the
+ * [attorney-client-idiom](https://en.wikibooks.org/wiki/More_C%2B%2B_Idioms/Friendship_and_the_Attorney-Client).
+ * This attorney returns a reference to the internally stored data of the seqan3::alignment_result. Only the
+ * seqan3::detail::aligned_sequence_builder is allowed to access the function of the attorney to set the
+ * respective member. At the same time only the attorney is allowed to access the private data of the
+ * seqan3::alignment_result class.
+ *
+ * This additional indirection is necessary because befriending the seqan3::detail::aligned_sequence_builder does not
+ * work with gcc >= 10.2. Since [gcc 10.2](https://gcc.gnu.org/bugzilla/show_bug.cgi?id=93467) the friend declaration
+ * inside of the seqan3::alignment_result class must must match the requires expression of the befirended class exactly.
+ * However, in this particular use case the firend declaration
+ * `requires is_type_specialisation_of_v<result_t, alignment_result>` inside of the seqan3::alignment_result is
+ * interpreted falsely as `requires is_type_specialisation_of_v<result_t, alignment_result<value_t>>`, i.e. the second
+ * template parameter is not considered a tempalte template parameter anymore but a concrete template instantiation
+ * with its value type. Thus, the requires expression of the friend declaration inside of seqan3::alignment_result
+ * does not match the requries expression of the seqan3::detail::aligned_sequence_builder.
+ */
+class alignment_result_attorney
+{
+private:
+    /*!\brief Returns the data of the seqan3::alignment_result.
+     *
+     * \tparam value_t The alignment result value type.
+     * \param[in] result The alignment result.
+     * \returns A reference to the internal alignment result data.
+     */
+    template <typename value_t>
+    constexpr static value_t & data(alignment_result<value_t> & result) noexcept
+    {
+        return result.data;
+    }
+
+    //!\brief Befriend alignment result builder.
+    template <typename result_t>
+    #if !SEQAN3_WORKAROUND_GCC_93467
+    //!\cond
+        requires is_type_specialisation_of_v<result_t, alignment_result>
+    //!\endcond
+    #endif // !SEQAN3_WORKAROUND_GCC_93467
+    friend class detail::policy_alignment_result_builder;
+};
+
 } // namespace seqan3::detail
 
 namespace seqan3
@@ -176,6 +240,9 @@ private:
     //! \brief Object that stores the computed alignment results.
     alignment_result_value_t data{};
 
+    //!\brief Befriend the attorney which can access the result data.
+    friend class detail::alignment_result_attorney;
+
     /*!\name Member types
      * \brief Local definition of the types contained in the `data` object.
      * \{
@@ -193,15 +260,6 @@ private:
     //! \brief The type for the alignment.
     using alignment_t = decltype(data.alignment);
     //!\}
-
-    //!\brief Befriend alignment result builder.
-    template <typename configuration_t>
-    #if !SEQAN3_WORKAROUND_GCC_93467
-    //!\cond
-        requires detail::is_type_specialisation_of_v<configuration_t, configuration>
-    //!\endcond
-    #endif // !SEQAN3_WORKAROUND_GCC_93467
-    friend class detail::policy_alignment_result_builder;
 
 public:
     /*!\name Constructors, destructor and assignment
