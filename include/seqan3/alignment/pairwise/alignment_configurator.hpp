@@ -23,8 +23,8 @@
 #include <seqan3/alignment/pairwise/detail/concept.hpp>
 #include <seqan3/alignment/pairwise/detail/pairwise_alignment_algorithm.hpp>
 #include <seqan3/alignment/pairwise/detail/pairwise_alignment_algorithm_banded.hpp>
-#include <seqan3/alignment/pairwise/detail/policy_alignment_algorithm_logger.hpp>
 #include <seqan3/alignment/pairwise/detail/select_alignment_matrix_policy.hpp>
+#include <seqan3/alignment/pairwise/detail/select_logger_policy.hpp>
 #include <seqan3/alignment/pairwise/detail/select_recursion_policy.hpp>
 #include <seqan3/alignment/pairwise/detail/select_result_builder_policy.hpp>
 #include <seqan3/alignment/pairwise/detail/select_optimum_tracker_policy.hpp>
@@ -35,9 +35,7 @@
 #include <seqan3/alignment/pairwise/alignment_result.hpp>
 #include <seqan3/alignment/scoring/nucleotide_scoring_scheme.hpp>
 #include <seqan3/core/detail/deferred_crtp_base.hpp>
-#include <seqan3/core/detail/empty_type.hpp>
 #include <seqan3/core/detail/template_inspection.hpp>
-#include <seqan3/core/simd/simd.hpp>
 #include <seqan3/range/views/type_reduce.hpp>
 #include <seqan3/utility/tuple/concept.hpp>
 #include <seqan3/utility/type_traits/lazy_conditional.hpp>
@@ -395,56 +393,23 @@ private:
         using alignment_matrix_policy_t = select_alignment_matrix_policy_t<traits_t>;
 
         //----------------------------------------------------------------------------------------------------------
+        // Configure the logger policy.
+        //----------------------------------------------------------------------------------------------------------
+
+        using logger_policy_t = select_logger_policy_t<traits_t>;
+
+        //----------------------------------------------------------------------------------------------------------
         // Configure the final alignment algorithm.
         //----------------------------------------------------------------------------------------------------------
 
-        return configure_debug_build<function_wrapper_t,
-                                     gap_cost_policy_t,
-                                     optimum_tracker_policy_t,
-                                     result_builder_policy_t,
-                                     scoring_scheme_policy_t,
-                                     alignment_matrix_policy_t>(cfg);
-    }
-
-    /*!\brief Enables the debug policy if the alignment is run in debug mode.
-     *
-     * \tparam function_wrapper_t The invocable alignment function type-erased via std::function.
-     * \tparam policies_t A template parameter pack for the already configured policy types.
-     * \tparam config_t The alignment configuration type.
-     *
-     * \returns The configured type-erased alignment algorithm.
-     *
-     * \details
-     *
-     * Activates the debug logger inside of the alignment algorithm.
-     */
-    template <typename function_wrapper_t, typename ...policies_t, typename config_t>
-    static constexpr function_wrapper_t configure_debug_build(config_t const & cfg)
-    {
-        using traits_t = alignment_configuration_traits<config_t>;
-
-        if constexpr (traits_t::is_debug)
-        {
-            using debug_score_t = std::optional<typename traits_t::score_type>;
-            using debug_trace_t = std::optional<typename traits_t::trace_type>;
-            using debug_score_matrix_t = two_dimensional_matrix<debug_score_t,
-                                                                std::allocator<debug_score_t>,
-                                                                matrix_major_order::column>;
-
-            using debug_trace_matrix_t = std::conditional_t<traits_t::compute_sequence_alignment,
-                                                            two_dimensional_matrix<debug_trace_t,
-                                                                                   std::allocator<debug_trace_t>,
-                                                                                   matrix_major_order::column>,
-                                                            empty_type>;
-
-            using logger_t = policy_alignment_algorithm_logger<debug_score_matrix_t, debug_trace_matrix_t>;
-
-            return select_alignment_algorithm_t<traits_t, config_t, logger_t, policies_t...>{cfg};
-        }
-        else
-        {
-            return select_alignment_algorithm_t<traits_t, config_t, policies_t...>{cfg};
-        }
+        return select_alignment_algorithm_t<traits_t,
+                                            config_t,
+                                            logger_policy_t,
+                                            gap_cost_policy_t,
+                                            optimum_tracker_policy_t,
+                                            result_builder_policy_t,
+                                            scoring_scheme_policy_t,
+                                            alignment_matrix_policy_t>{cfg};
     }
 };
 
