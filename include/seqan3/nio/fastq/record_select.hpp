@@ -14,6 +14,8 @@
 
 #include <seqan3/alphabet/concept.hpp>
 
+#include <seqan3/nio/fastq/record_raw.hpp>
+
 namespace seqan3::nio
 {
 
@@ -27,52 +29,56 @@ public:
     using id_type = std::string;
 
     field_id() = default;
-    field_id(fastq_record_raw & raw_record) : _id(raw_record.id_raw())
-    {}
+    field_id(fastq_record_raw & raw_record) : _id{}
+    {
+        _id.resize(raw_record.id_transform().size());
+        std::ranges::copy(raw_record.id_transform(),
+                          _id.begin());
+    }
 
     id_type const & id() const { return _id; }
 };
 
-template <typename alpha_t>
+template <typename sequence_alphabet_t>
 class field_seq
 {
 public:
-    using sequence_type = std::vector<alpha_t>;
+    using sequence_type = std::vector<sequence_alphabet_t>;
 private:
 
-    sequence_type _seq{};
+    sequence_type _sequence{};
 public:
     field_seq() = default;
     field_seq(fastq_record_raw & raw_record)
     {
-        _seq.resize(raw_record.sequence_raw().size());
-        std::ranges::copy(raw_record.sequence_raw() |
-                          std::views::transform([] (char elem) { return assign_char_to(elem, alpha_t{}); } ),
-                          _seq.begin());
+        _sequence.resize(raw_record.sequence_transform().size());
+        std::ranges::copy(raw_record.sequence_transform() |
+                          std::views::transform([] (char elem) { return assign_char_to(elem, sequence_alphabet_t{}); } ),
+                          _sequence.begin());
     }
 
-    sequence_type const & sequence() const { return _seq; }
+    sequence_type const & sequence() const { return _sequence; }
 };
 
-template <typename qual_t>
+template <typename sequence_quality_alphabet_t>
 class field_qual
 {
 public:
-    using quality_sequence_type = std::vector<qual_t>;
+    using quality_sequence_type = std::vector<sequence_quality_alphabet_t>;
 private:
 
-    quality_sequence_type _qual{};
+    quality_sequence_type _quality_sequence{};
 public:
     field_qual() = default;
     field_qual(fastq_record_raw & raw_record)
     {
-        _qual.resize(raw_record.quality_sequence_raw().size());
-        std::ranges::copy(raw_record.quality_sequence_raw() |
-                          std::views::transform([] (char elem) { return assign_char_to(elem, qual_t{}); } ),
-                          _qual.begin());
+        _quality_sequence.resize(raw_record.quality_sequence_transform().size());
+        std::ranges::copy(raw_record.quality_sequence_transform() |
+                          std::views::transform([] (char elem) { return assign_char_to(elem, sequence_quality_alphabet_t{}); } ),
+                          _quality_sequence.begin());
     }
 
-    quality_sequence_type const & quality_sequence() const { return _qual; }
+    quality_sequence_type const & quality_sequence() const { return _quality_sequence; }
 };
 
 template <typename ...field_t>
