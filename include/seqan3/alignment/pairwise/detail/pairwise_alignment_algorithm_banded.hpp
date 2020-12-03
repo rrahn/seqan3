@@ -110,7 +110,7 @@ public:
                                          std::move(idx),
                                          this->optimal_score,
                                          this->optimal_coordinate,
-                                         this->alignment_builder(alignment_matrix),
+                                         this->trace_path_generator(alignment_matrix),
                                          callback);
         }
     }

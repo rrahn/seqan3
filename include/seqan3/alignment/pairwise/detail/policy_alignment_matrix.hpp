@@ -12,6 +12,7 @@
 
 #pragma once
 
+#include <array>
 #include <tuple>
 #include <seqan3/std/concepts>
 
@@ -22,6 +23,7 @@
 #include <seqan3/alignment/pairwise/detail/type_traits.hpp>
 #include <seqan3/core/configuration/configuration.hpp>
 #include <seqan3/core/detail/template_inspection.hpp>
+#include <seqan3/core/simd/concept.hpp>
 
 namespace seqan3::detail
 {
@@ -51,13 +53,32 @@ template <typename alignment_matrix_t, typename coordinate_matrix_t>
 class policy_alignment_matrix
 {
 protected:
+    // ----------------------------------------------------------------------------
+    // type definition
+    // ----------------------------------------------------------------------------
+
     //!\brief The underlying score type of the alignment matrix.
     using score_type = typename alignment_matrix_t::score_type;
+
+    // ----------------------------------------------------------------------------
+    // static member
+    // ----------------------------------------------------------------------------
+
+    //!\brief Flag indicating whether the trace was computed.
+    static constexpr bool with_trace = is_type_specialisation_of_v<alignment_matrix_t, combined_score_and_trace_matrix>;
+    //!\brief Flag indicating whether the alignment is computed in vectorised mode.
+    static constexpr bool is_vectorised = simd_concept<score_type>;
+
+    // ----------------------------------------------------------------------------
+    // non-static member
+    // ----------------------------------------------------------------------------
 
     //!\brief The selected lower diagonal.
     int32_t lower_diagonal{};
     //!\brief The selected upper diagonal.
     int32_t upper_diagonal{};
+    //!\brief The largest column index where the alignment matrix (banded or not) still intersects in the first row.
+    int32_t largest_valid_column_index{};
     //!\brief A flag indicating whether the final gaps in the last column are free.
     bool last_column_is_free{};
     //!\brief A flag indicating whether the final gaps in the last row are free.
@@ -154,10 +175,12 @@ protected:
      */
     auto acquire_matrices(size_t const sequence1_size,
                           size_t const sequence2_size,
-                          score_type initial_score = score_type{}) const
+                          score_type initial_score = score_type{})
     {
         assert(sequence1_size < static_cast<uint64_t>(std::numeric_limits<int64_t>::max()));
         assert(sequence2_size < static_cast<uint64_t>(std::numeric_limits<int64_t>::max()));
+
+        largest_valid_column_index = std::clamp<int32_t>(upper_diagonal, 0, sequence1_size);
 
         if (is_banded)
             check_valid_band_configuration(sequence1_size, sequence2_size);
@@ -211,6 +234,67 @@ protected:
             throw invalid_alignment_configuration{"The selected band [" + std::to_string(lower_diagonal) + ":" +
                                                   std::to_string(upper_diagonal) + "] cannot be used with the current "
                                                   "alignment configuration: " + error_cause};
+    }
+
+    /*!\brief Returns the trace path starting at the given coordinate and for the respective simd position
+     *
+     * \param[in] alignment_matrix The alignment matrix to get the trace path from.
+     * \param[in] coordinate The alignment matrix coordinate where the trace path starts.
+     * \param[in] simd_position The simd vector position associated with the respective alignment matrix in vectorised
+     *                          alignment.
+     *
+     * \details
+     *
+     * Creates a lazy range over the trace path starting at the given matrix coordinate. The end of the trace is
+     * defined by the first coordinate who's trace value is equal to seqan3::detail::trace_directions::none.
+     * In the banded alignment the row index of the given coordinate is adapted to map to the correct position within
+     * the trace matrix, since only a fraction of the original memory was allocated.
+     *
+     * ### Exception
+     *
+     * Might throw seqan3::invalid_alignment_configuration if this function is invoked even if the computation of the
+     * trace was not configured by the user.
+     * Otherwise, might throw implementation defined exceptions.
+     * If an exception is thrown the state of the policy is not changed (strong exception guarantee).
+     */
+    auto trace_path_starting_at(alignment_matrix_t const & alignment_matrix,
+                                matrix_coordinate coordinate,
+                                [[maybe_unused]] size_t const simd_position)
+    {
+        if constexpr (with_trace)
+        {
+            if (is_banded)  // update the coordinate's row index if the alignment was computed with a band.
+            {
+                int32_t column_index = coordinate.col;
+                coordinate.row -= (column_index > largest_valid_column_index) *
+                                  (column_index - largest_valid_column_index);
+            }
+
+            // Helper function to make the actual trace path for the given trace matrix iterator.
+            auto make_trace_path = [&] (auto trace_matrix_it)
+            {
+                using trace_matrix_iterator_t = decltype(trace_matrix_it);
+                using trace_path_iterator_t = trace_iterator<trace_matrix_iterator_t>;
+                using trace_path_t = std::ranges::subrange<trace_path_iterator_t, std::default_sentinel_t>;
+
+                return trace_path_t{trace_path_iterator_t{trace_matrix_it,
+                                                          column_index_type{largest_valid_column_index}},
+                                    std::default_sentinel};
+            };
+
+            auto trace_matrix_it = alignment_matrix.matrix_iterator_at(coordinate);
+
+            if constexpr (is_vectorised)
+                return make_trace_path(trace_matrix_simd_adapter_iterator{trace_matrix_it, simd_position});
+            else
+                return make_trace_path(trace_matrix_it);
+        }
+        else
+        {
+            static_assert(with_trace,
+                          "Trying to get the trace path from an alignment without computed trace information.");
+            return std::array<trace_directions, 0>{};
+        }
     }
 };
 } // namespace seqan3::detail

@@ -144,7 +144,7 @@ protected:
      * \tparam id_t The type of the id.
      * \tparam score_t The type of the score.
      * \tparam matrix_coordinate_t The type of the matrix coordinate.
-     * \tparam trace_path_from_t The type of the aligned sequences builder.
+     * \tparam trace_path_generator_t The type of the trace path generator.
      * \tparam callback_t The type of the callback to invoke.
      *
      * \param[in] logger The debug logger (only available when run in debug mode).
@@ -152,7 +152,7 @@ protected:
      * \param[in] id The associated id.
      * \param[in] score The best alignment score.
      * \param[in] end_positions The matrix coordinate of the best alignment score.
-     * \param[in] aligned_sequence_builder The aligned sequence builder.
+     * \param[in] trace_path_generator The trace path generator.
      * \param[in] callback The callback to invoke with the generated result.
      *
      * \details
@@ -170,7 +170,7 @@ protected:
               typename index_t,
               typename score_t,
               typename matrix_coordinate_t,
-              typename aligned_sequence_builder_t,
+              typename trace_path_generator_t,
               typename callback_t>
     //!\cond
         requires std::invocable<callback_t, result_type>
@@ -180,7 +180,7 @@ protected:
                                      [[maybe_unused]] index_t && id,
                                      [[maybe_unused]] score_t score,
                                      [[maybe_unused]] matrix_coordinate_t end_positions,
-                                     [[maybe_unused]] aligned_sequence_builder_t const & aligned_sequence_builder,
+                                     [[maybe_unused]] trace_path_generator_t const & trace_path_generator,
                                      callback_t && callback)
     {
         result_type result{};
@@ -205,9 +205,8 @@ protected:
         {
             using std::get;
 
-            auto aligned_sequence_result = aligned_sequence_builder(get<0>(sequence_pair),
-                                                                    get<1>(sequence_pair),
-                                                                    end_positions);
+            aligned_sequence_builder builder{get<0>(sequence_pair), get<1>(sequence_pair)};
+            auto aligned_sequence_result = builder(trace_path_generator(end_positions));
 
             if constexpr (result_data_type::has_begin_positions)
             {
