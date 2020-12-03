@@ -15,13 +15,16 @@
 #include <seqan3/std/concepts>
 #include <seqan3/std/ranges>
 
-#include <seqan3/alignment/matrix/detail/aligned_sequence_builder.hpp>
-#include <seqan3/alignment/pairwise/detail/type_traits.hpp>
+#include <seqan3/alignment/matrix/detail/matrix_coordinate.hpp>
+#include <seqan3/alignment/pairwise/detail/concept.hpp>
+#include <seqan3/core/algorithm/configuration.hpp>
 #include <seqan3/core/detail/empty_type.hpp>
 #include <seqan3/core/simd/view_to_simd.hpp>
 #include <seqan3/range/container/aligned_allocator.hpp>
 #include <seqan3/range/views/get.hpp>
+#include <seqan3/range/views/take.hpp>
 #include <seqan3/utility/detail/type_name_as_string.hpp>
+#include <seqan3/utility/type_traits/lazy_conditional.hpp>
 
 namespace seqan3::detail
 {
@@ -30,31 +33,45 @@ namespace seqan3::detail
  * \implements std::invocable
  * \ingroup pairwise_alignment
  *
- * \tparam alignment_configuration_t The configuration type; must be of type seqan3::configuration.
+ * \tparam score_t The configured score type.
+ * \tparam result_t The configured result type.
  * \tparam policies_t Variadic template argument for the different policies of this alignment algorithm.
  *
  * \details
  *
- * ### Configuration
- *
- * The first template argument is the type of the alignment configuration. The alignment configuration was used to
- * configure the `alignment algorithm type` within the seqan3::detail::alignment_configurator.
- * The algorithm computes a column based dynamic programming matrix given two sequences.
- * After the computation a user defined callback function is invoked with the computed seqan3::alignment_result.
+ * The algorithm computes a classical dynamic programming matrix to obtain the alignment for a pair of sequences.
+ * The matrix is computed column-wise and expects that all policies adhere to this computation layout.
+ * The algorithm can also compute alignments for batches of seuence pairs concurrently using vectorisation on
+ * dedicated SIMD registers.
+ * After the computation a user defined callback function is invoked for every generated seqan3::alignment_result.
+ * This means that one seqan3::alignment_result is associated with only one result, even if a batch of alignments is
+ * computed in the vetorised mode.
  */
-template <typename alignment_configuration_t, typename ...policies_t>
-//!\cond
-    requires is_type_specialisation_of_v<alignment_configuration_t, configuration>
-//!\endcond
+template <typename score_t, typename result_t, typename ...policies_t>
 class pairwise_alignment_algorithm : protected policies_t...
 {
 protected:
-    //!\brief The alignment configuration traits type with auxiliary information extracted from the configuration type.
-    using traits_type = alignment_configuration_traits<alignment_configuration_t>;
+
+    // ----------------------------------------------------------------------------
+    // static member
+    // ----------------------------------------------------------------------------
+
+    //!\brief Flag indicating whether the alignment is executed in vectorised mode.
+    static constexpr bool is_vectorised = simd_concept<score_t>;
+
+    // ----------------------------------------------------------------------------
+    // type definition
+    // ----------------------------------------------------------------------------
+
     //!\brief The configured score type.
-    using score_type = typename traits_type::score_type;
+    using score_type = score_t;
+    //!\brief Helper template alias to extract the scalar type of a simd type in a lazy conditional.
+    template <simd_concept simd_score_t>
+    using scalar_type_of = typename simd_traits<simd_score_t>::scalar_type;
+    //!\brief The original score type.
+    using original_score_type = lazy_conditional_t<is_vectorised, lazy<scalar_type_of, score_type>, score_type>;
     //!\brief The configured alignment result type.
-    using alignment_result_type = typename traits_type::alignment_result_type;
+    using alignment_result_type = result_t;
 
     static_assert(!std::same_as<alignment_result_type, empty_type>, "Alignment result type was not configured.");
 
@@ -70,12 +87,19 @@ public:
     ~pairwise_alignment_algorithm() = default; //!< Defaulted.
 
     /*!\brief Constructs and initialises the algorithm using the alignment configuration.
-     * \param config The configuration passed into the algorithm.
+     *
+     * \tparam alignment_configuration_t The type of the alignment configuration.
+     *
+     * \param[in] config The configuration passed into the algorithm.
      *
      * \details
      *
      * Initialises the base policies of the alignment algorithm.
      */
+    template <typename alignment_configuration_t>
+    //!\cond
+        requires is_type_specialisation_of_v<alignment_configuration_t, configuration>
+    //!\endcond
     pairwise_alignment_algorithm(alignment_configuration_t const & config) : policies_t(config)...
     {}
     //!\}
@@ -140,8 +164,7 @@ public:
 
             auto && [alignment_matrix, index_matrix] = this->acquire_matrices(sequence1_size, sequence2_size);
 
-            if constexpr (traits_type::is_debug)
-                this->initialise_debug_matrices(sequence1_size, sequence2_size);
+            this->initialise_debug_matrices(sequence1_size, sequence2_size);
 
             compute_matrix(get<0>(sequence_pair), get<1>(sequence_pair), alignment_matrix, index_matrix);
             this->make_result_and_invoke(*this,
@@ -158,7 +181,7 @@ public:
     //!\overload
     template <indexed_sequence_pair_range indexed_sequence_pairs_t, typename callback_t>
     //!\cond
-        requires traits_type::is_vectorised && std::invocable<callback_t, alignment_result_type>
+        requires is_vectorised && std::invocable<callback_t, alignment_result_type>
     //!\endcond
     auto operator()(indexed_sequence_pairs_t && indexed_sequence_pairs, callback_t && callback)
     {
@@ -195,7 +218,7 @@ protected:
     template <indexed_sequence_pair_range indexed_sequence_pairs_t>
     auto preprocess_sequences(indexed_sequence_pairs_t && indexed_sequence_pairs)
     {
-        static_assert(traits_type::is_vectorised, "This preprocess function is only callable in vectorisation mode.");
+        static_assert(is_vectorised, "This preprocess function is only callable in vectorisation mode.");
 
         using simd_collection_t = std::vector<score_type, aligned_allocator<score_type, alignof(score_type)>>;
 
@@ -242,17 +265,15 @@ protected:
                             alignment_matrix_t && alignment_matrix,
                             callback_t && callback)
     {
-        static_assert(traits_type::is_vectorised, "This preprocess function is only callable in vectorisation mode.");
+        static_assert(is_vectorised, "This preprocess function is only callable in vectorisation mode.");
         // Check that the sequence collection and the length of the vector have indeed the same size.
         assert(std::ranges::distance(indexed_sequence_pairs) <= simd::simd_traits<score_type>::length);
-
-        using original_score_t = typename traits_type::original_score_type;
 
         size_t index = 0;
         for (auto && [sequence_pair, idx] : indexed_sequence_pairs)
         {
-            original_score_t const padding_offset = this->padding_offsets[index];
-            original_score_t score = this->optimal_score[index] -
+            original_score_type const padding_offset = this->padding_offsets[index];
+            original_score_type score = this->optimal_score[index] -
                                      (padding_offset * this->scoring_scheme.padding_match_score());
             matrix_coordinate coordinate{
                 row_index_type{static_cast<size_t>(this->optimal_coordinate.row[index] - padding_offset)},
@@ -337,7 +358,7 @@ protected:
                                                    sequence_collection_t & sequences,
                                                    padding_symbol_t const & padding_symbol)
     {
-        assert(static_cast<size_t>(std::ranges::distance(sequences)) <= traits_type::alignments_per_vector);
+        assert(static_cast<size_t>(std::ranges::distance(sequences)) <= simd_traits<score_type>::length);
 
         simd_sequence.clear();
         for (auto && simd_vector_chunk : sequences | views::to_simd<score_type>(padding_symbol))
@@ -459,9 +480,8 @@ protected:
 
         this->track_last_row_cell(*first_column_it, *cell_index_column_it);
 
-        if constexpr (traits_type::is_debug)
-            this->log_alignment_matrix_column(cell_index_column, alignment_column
-                                                               | views::take(std::ranges::distance(sequence2)+ 1));
+        this->log_alignment_matrix_column(cell_index_column, alignment_column
+                                                           | views::take(std::ranges::distance(sequence2)+ 1));
     }
 
     /*!\brief Initialise any column of the alignment matrix except the first one.
@@ -494,8 +514,6 @@ protected:
                         alphabet1_t const & alphabet1,
                         sequence2_t && sequence2)
     {
-        using score_type = typename traits_type::score_type;
-
         // ---------------------------------------------------------------------
         // Initial phase: prepare column and initialise first cell
         // ---------------------------------------------------------------------
@@ -527,9 +545,8 @@ protected:
 
         this->track_last_row_cell(*alignment_column_it, *cell_index_column_it);
 
-        if constexpr (traits_type::is_debug)
-            this->log_alignment_matrix_column(cell_index_column, alignment_column
-                                                               | views::take(std::ranges::distance(sequence2) + 1));
+        this->log_alignment_matrix_column(cell_index_column, alignment_column
+                                                           | views::take(std::ranges::distance(sequence2) + 1));
     }
 };
 

@@ -21,8 +21,7 @@
 #include <seqan3/alignment/configuration/align_config_output.hpp>
 #include <seqan3/alignment/configuration/align_config_result_type.hpp>
 #include <seqan3/alignment/pairwise/detail/concept.hpp>
-#include <seqan3/alignment/pairwise/detail/pairwise_alignment_algorithm.hpp>
-#include <seqan3/alignment/pairwise/detail/pairwise_alignment_algorithm_banded.hpp>
+#include <seqan3/alignment/pairwise/detail/select_alignment_algorithm.hpp>
 #include <seqan3/alignment/pairwise/detail/select_alignment_matrix_policy.hpp>
 #include <seqan3/alignment/pairwise/detail/select_logger_policy.hpp>
 #include <seqan3/alignment/pairwise/detail/select_recursion_policy.hpp>
@@ -35,7 +34,6 @@
 #include <seqan3/alignment/pairwise/alignment_result.hpp>
 #include <seqan3/alignment/scoring/nucleotide_scoring_scheme.hpp>
 #include <seqan3/core/concept/tuple.hpp>
-#include <seqan3/core/detail/deferred_crtp_base.hpp>
 #include <seqan3/core/detail/template_inspection.hpp>
 #include <seqan3/range/views/type_reduce.hpp>
 #include <seqan3/utility/type_traits/lazy_conditional.hpp>
@@ -110,13 +108,6 @@ public:
  */
 struct alignment_configurator
 {
-private:
-    //!\brief Selects either the banded or the unbanded alignment algorithm based on the given traits type.
-    template <typename traits_t, typename ...args_t>
-    using select_alignment_algorithm_t = lazy_conditional_t<traits_t::is_banded,
-                                                            lazy<pairwise_alignment_algorithm_banded, args_t...>,
-                                                            lazy<pairwise_alignment_algorithm, args_t...>>;
-
 public:
     /*!\brief Configures the algorithm.
      * \tparam sequences_t The range type containing the sequence pairs; must model std::ranges::forward_range.
