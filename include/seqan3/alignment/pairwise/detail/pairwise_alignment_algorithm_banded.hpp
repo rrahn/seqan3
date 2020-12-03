@@ -28,24 +28,22 @@ namespace seqan3::detail
  * \ingroup pairwise_alignment
  * \copydetails seqan3::detail::pairwise_alignment_algorithm
  */
-template <typename alignment_configuration_t, typename ...policies_t>
-//!\cond
-    requires is_type_specialisation_of_v<alignment_configuration_t, configuration>
-//!\endcond
+template <typename score_t, typename result_t, typename ...policies_t>
 class pairwise_alignment_algorithm_banded :
-    protected pairwise_alignment_algorithm<alignment_configuration_t, policies_t...>
+    protected pairwise_alignment_algorithm<score_t, result_t, policies_t...>
 {
 protected:
     //!\brief The alignment configuration traits type with auxiliary information extracted from the configuration type.
-    using base_algorithm_t = pairwise_alignment_algorithm<alignment_configuration_t, policies_t...>;
+    using base_algorithm_t = pairwise_alignment_algorithm<score_t, result_t, policies_t...>;
 
     // Import types from base class.
-    using typename base_algorithm_t::traits_type;
     using typename base_algorithm_t::alignment_result_type;
     using typename base_algorithm_t::score_type;
 
     static_assert(!std::same_as<alignment_result_type, empty_type>, "Alignment result type was not configured.");
-    static_assert(traits_type::is_banded, "Alignment configuration must have band configured.");
+
+    //!\brief A flag indicating whether the alignment runs in simd mode.
+    static constexpr bool is_vectorised = simd_concept<score_type>;
 
 public:
     /*!\name Constructors, destructor and assignment
@@ -58,15 +56,11 @@ public:
     pairwise_alignment_algorithm_banded & operator=(pairwise_alignment_algorithm_banded &&) = default; //!< Defaulted.
     ~pairwise_alignment_algorithm_banded() = default; //!< Defaulted.
 
-    /*!\brief Constructs and initialises the algorithm using the alignment configuration.
-     * \param config The configuration passed into the algorithm.
-     *
-     * \details
-     *
-     * Initialises the algorithm given the user settings from the alignment configuration object.
-     *
-     * \throws seqan3::invalid_alignment_configuration.
-     */
+    //!\copydoc seqan3::detail::pairwise_alignment_algorithm::pairwise_alignment_algorithm(alignment_configuration_t const &)
+    template <typename alignment_configuration_t>
+    //!\cond
+        requires is_type_specialisation_of_v<alignment_configuration_t, configuration>
+    //!\endcond
     pairwise_alignment_algorithm_banded(alignment_configuration_t const & config) : base_algorithm_t(config)
     {}
     //!\}
@@ -88,8 +82,7 @@ public:
             size_t sequence1_size = std::ranges::distance(get<0>(sequence_pair));
             size_t const sequence2_size = std::ranges::distance(get<1>(sequence_pair));
 
-            if constexpr (traits_type::is_debug)
-                this->initialise_debug_matrices(sequence1_size, sequence2_size);
+            this->initialise_debug_matrices(sequence1_size, sequence2_size);
 
             auto && [alignment_matrix, index_matrix] = this->acquire_matrices(sequence1_size,
                                                                               sequence2_size,
@@ -118,7 +111,7 @@ public:
     //!\overload
     template <indexed_sequence_pair_range indexed_sequence_pairs_t, typename callback_t>
     //!\cond
-        requires traits_type::is_vectorised && std::invocable<callback_t, alignment_result_type>
+        requires is_vectorised && std::invocable<callback_t, alignment_result_type>
     //!\endcond
     auto operator()(indexed_sequence_pairs_t && indexed_sequence_pairs, callback_t && callback)
     {
@@ -358,9 +351,8 @@ protected:
 
         this->track_last_row_cell(*current_alignment_column_it, *cell_index_column_it);
 
-        if constexpr (traits_type::is_debug)
-            this->log_alignment_matrix_column(cell_index_column, alignment_column
-                                                               | views::take(std::ranges::distance(sequence2)));
+        this->log_alignment_matrix_column(cell_index_column, alignment_column
+                                                           | views::take(std::ranges::distance(sequence2)));
     }
 };
 
