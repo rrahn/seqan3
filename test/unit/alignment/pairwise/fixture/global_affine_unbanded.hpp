@@ -17,6 +17,7 @@
 #include <seqan3/alphabet/aminoacid/aa27.hpp>
 #include <seqan3/alphabet/nucleotide/dna4.hpp>
 #include <seqan3/alphabet/nucleotide/dna5.hpp>
+#include <seqan3/core/algorithm/configuration.hpp>
 
 #include "alignment_fixture.hpp"
 
