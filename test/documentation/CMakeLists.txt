@@ -28,7 +28,7 @@ set (SEQAN3_DOXYGEN_FAIL_ON_WARNINGS "
 
 # We search the HTML output to ensure that no `requires` clauses are at wrong places.
 set (SEQAN3_DOXYGEN_FAIL_ON_UNCOND_REQUIRES
-     "! find . -not -name \"*_source.html\" -name \"*.html\" -print0 | xargs -0 grep \"requires\" | grep \"memname\"")
+     "! find . -not -name \"*_source.html\" -name \"*.html\" -print0 | xargs -0 grep -e \"[[:space:]]requires[[:space:]]\" | grep \"memname\"")
 
 if (SEQAN3_USER_DOC)
     message (STATUS "Add user doc test.")
