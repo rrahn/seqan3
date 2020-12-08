@@ -47,7 +47,9 @@ namespace seqan3::detail
  * This means that one seqan3::alignment_result is associated with only one result, even if a batch of alignments is
  * computed in the vetorised mode.
  */
-template <typename score_t, typename result_t, typename ...policies_t>
+template <typename score_t, typename result_t,
+          typename state_t,
+          typename ...policies_t>
 class pairwise_alignment_algorithm : protected policies_t...
 {
 protected:
@@ -75,6 +77,8 @@ protected:
 
     static_assert(!std::same_as<alignment_result_type, empty_type>, "Alignment result type was not configured.");
 
+    state_t alignment_state{};
+
 public:
     /*!\name Constructors, destructor and assignment
      * \{
@@ -100,7 +104,9 @@ public:
     //!\cond
         requires is_type_specialisation_of_v<alignment_configuration_t, configuration>
     //!\endcond
-    pairwise_alignment_algorithm(alignment_configuration_t const & config) : policies_t(config)...
+    pairwise_alignment_algorithm(alignment_configuration_t const & config) :
+        policies_t(config)...,
+        alignment_state{config}
     {}
     //!\}
 
@@ -189,12 +195,18 @@ public:
 
         auto && [alignment_matrix, index_matrix] = this->acquire_matrices(simd_seq1_collection.size(),
                                                                           simd_seq2_collection.size());
-
-        compute_matrix(simd_seq1_collection, simd_seq2_collection, alignment_matrix, index_matrix);
+        // compute_matrix(simd_seq1_collection, simd_seq2_collection, alignment_matrix, index_matrix);
+        // pairwise_alignment_kernel{}{alignment_kernel};
+        pairwise_alignment_kernel{}(simd_seq1_collection,
+                                    simd_seq2_collection,
+                                    alignment_matrix,
+                                    index_matrix,
+                                    alignment_state);
 
         postprocess_result(std::forward<indexed_sequence_pairs_t>(indexed_sequence_pairs),
                            alignment_matrix,
-                           std::forward<callback_t>(callback));
+                           std::forward<callback_t>(callback),
+                           alignment_state);
     }
 
 protected:
@@ -226,7 +238,8 @@ protected:
         auto seq1_collection = indexed_sequence_pairs | views::get<0> | views::get<0>;
         auto seq2_collection = indexed_sequence_pairs | views::get<0> | views::get<1>;
 
-        this->initialise_tracker(seq1_collection, seq2_collection);
+        // this->initialise_tracker(seq1_collection, seq2_collection);
+        alignment_state.initialise_tracker(seq1_collection, seq2_collection);
 
         // Convert batch of sequences to sequence of simd vectors.
         thread_local simd_collection_t simd_seq1_collection{};
@@ -260,10 +273,11 @@ protected:
      * Subsequently, the alignment result builder is invoked with the respective values to construct the alignment
      * result and invoke the callable with the new result.
      */
-    template <indexed_sequence_pair_range indexed_sequence_pairs_t, typename alignment_matrix_t, typename callback_t>
+    template <indexed_sequence_pair_range indexed_sequence_pairs_t, typename alignment_matrix_t, typename callback_t, typename tracker_t>
     void postprocess_result(indexed_sequence_pairs_t && indexed_sequence_pairs,
                             alignment_matrix_t && alignment_matrix,
-                            callback_t && callback)
+                            callback_t && callback,
+                            tracker_t const & tracker)
     {
         static_assert(is_vectorised, "This preprocess function is only callable in vectorisation mode.");
         // Check that the sequence collection and the length of the vector have indeed the same size.
@@ -272,12 +286,12 @@ protected:
         size_t index = 0;
         for (auto && [sequence_pair, idx] : indexed_sequence_pairs)
         {
-            original_score_type const padding_offset = this->padding_offsets[index];
-            original_score_type score = this->optimal_score[index] -
+            original_score_type const padding_offset = tracker.padding_offsets[index];
+            original_score_type score = tracker.optimal_score[index] -
                                      (padding_offset * this->scoring_scheme.padding_match_score());
             matrix_coordinate coordinate{
-                row_index_type{static_cast<size_t>(this->optimal_coordinate.row[index] - padding_offset)},
-                column_index_type{static_cast<size_t>(this->optimal_coordinate.col[index] - padding_offset)}
+                row_index_type{static_cast<size_t>(tracker.optimal_coordinate.row[index] - padding_offset)},
+                column_index_type{static_cast<size_t>(tracker.optimal_coordinate.col[index] - padding_offset)}
             };
 
             this->make_result_and_invoke(*this,

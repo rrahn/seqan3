@@ -33,7 +33,7 @@ template <typename score_t, typename trace_t, bool truncate_score>
 //!\endcond
 class policy_affine_gap_with_trace_recursion : protected policy_affine_gap_recursion<score_t, truncate_score>
 {
-protected:
+public:
     //!\brief The type of the base policy.
     using base_t = policy_affine_gap_recursion<score_t, truncate_score>;
 

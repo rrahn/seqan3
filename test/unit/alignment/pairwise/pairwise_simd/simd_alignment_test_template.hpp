@@ -65,12 +65,12 @@ private:
 
 public:
     using type = seqan3::detail::select_alignment_algorithm_t<traits_t,
+                                                              gap_cost_policy_t,
+                                                              scoring_scheme_policy_t,
+                                                              optimum_tracker_policy_t,
                                                               alignment_logger_policy_t,
                                                               alignment_matrix_policy_t,
-                                                              result_builder_policy_t,
-                                                              optimum_tracker_policy_t,
-                                                              gap_cost_policy_t,
-                                                              scoring_scheme_policy_t>;
+                                                              result_builder_policy_t>;
 };
 
 template <typename fixture_t>

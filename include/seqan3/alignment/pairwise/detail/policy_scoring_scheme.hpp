@@ -32,7 +32,7 @@ namespace seqan3::detail
 template <typename scoring_scheme_t>
 class policy_scoring_scheme
 {
-protected:
+public:
     //!\brief The scoring scheme used for this alignment algorithm.
     scoring_scheme_t scoring_scheme{};
 

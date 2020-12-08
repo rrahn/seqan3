@@ -49,7 +49,7 @@ template <typename score_t, bool truncate_score>
 //!\endcond
 class policy_affine_gap_recursion
 {
-protected:
+public:
     // ----------------------------------------------------------------------------
     // type definitions
     // ----------------------------------------------------------------------------

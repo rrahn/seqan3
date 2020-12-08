@@ -191,7 +191,7 @@ template <typename score_t, typename matrix_coordinate_t, std::semiregular optim
 //!\endcond
 class policy_optimum_tracker
 {
-protected:
+public:
     // ----------------------------------------------------------------------------
     // type definitions
     // ----------------------------------------------------------------------------

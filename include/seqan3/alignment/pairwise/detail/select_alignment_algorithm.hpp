@@ -12,6 +12,8 @@
 
 #pragma once
 
+#include <seqan3/alignment/pairwise/detail/pairwise_alignment_kernel.hpp>
+
 #include <seqan3/alignment/pairwise/detail/pairwise_alignment_algorithm.hpp>
 #include <seqan3/alignment/pairwise/detail/pairwise_alignment_algorithm_banded.hpp>
 #include <seqan3/utility/type_traits/lazy_conditional.hpp>
@@ -25,7 +27,11 @@ namespace seqan3::detail
  * \tparam algorithm_traits_t The type of the configured algorithm traits.
  * \tparam policies_t A template parameter pack with the supported policies.
  */
-template <typename algorithm_traits_t, typename ...policies_t>
+template <typename algorithm_traits_t,
+          typename recursion_policy_t,
+          typename scoring_scheme_policy_t,
+          typename tracker_policy_t,
+          typename ...policies_t>
 struct select_alignment_algorithm
 {
 private:
@@ -34,11 +40,13 @@ private:
     //!\brief The configured result type.
     using result_t = typename algorithm_traits_t::alignment_result_type;
 
+    using state_t = pairwise_alignment_state<recursion_policy_t, scoring_scheme_policy_t, tracker_policy_t>;
+
 public:
     //!\brief The alignment algorithm.
     using type = lazy_conditional_t<algorithm_traits_t::is_banded,
-                                    lazy<pairwise_alignment_algorithm_banded, score_t, result_t, policies_t...>,
-                                    lazy<pairwise_alignment_algorithm, score_t, result_t, policies_t...>>;
+                                    lazy<pairwise_alignment_algorithm_banded, score_t, result_t, state_t, recursion_policy_t, scoring_scheme_policy_t, tracker_policy_t, policies_t...>,
+                                    lazy<pairwise_alignment_algorithm, score_t, result_t, state_t, recursion_policy_t, scoring_scheme_policy_t, tracker_policy_t, policies_t...>>;
 };
 
 /*!\brief Helper type alias for selecting the type of the pairwise alignment algorithm.

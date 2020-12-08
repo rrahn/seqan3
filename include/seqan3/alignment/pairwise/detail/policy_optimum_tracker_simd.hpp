@@ -92,7 +92,7 @@ template <typename score_t, typename matrix_coordinate_t, std::semiregular optim
 class policy_optimum_tracker_simd :
     protected policy_optimum_tracker<score_t, matrix_coordinate_t, optimum_updater_t>
 {
-protected:
+public:
     // ----------------------------------------------------------------------------
     // type definitions
     // ----------------------------------------------------------------------------

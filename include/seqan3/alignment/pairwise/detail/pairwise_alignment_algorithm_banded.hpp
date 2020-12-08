@@ -28,13 +28,13 @@ namespace seqan3::detail
  * \ingroup pairwise_alignment
  * \copydetails seqan3::detail::pairwise_alignment_algorithm
  */
-template <typename score_t, typename result_t, typename ...policies_t>
+template <typename score_t, typename result_t, typename kernel_t, typename ...policies_t>
 class pairwise_alignment_algorithm_banded :
-    protected pairwise_alignment_algorithm<score_t, result_t, policies_t...>
+    protected pairwise_alignment_algorithm<score_t, result_t, kernel_t, policies_t...>
 {
 protected:
     //!\brief The alignment configuration traits type with auxiliary information extracted from the configuration type.
-    using base_algorithm_t = pairwise_alignment_algorithm<score_t, result_t, policies_t...>;
+    using base_algorithm_t = pairwise_alignment_algorithm<score_t, result_t, kernel_t, policies_t...>;
 
     // Import types from base class.
     using typename base_algorithm_t::alignment_result_type;
@@ -125,7 +125,8 @@ public:
 
         this->postprocess_result(std::forward<indexed_sequence_pairs_t>(indexed_sequence_pairs),
                                  alignment_matrix,
-                                 std::forward<callback_t>(callback));
+                                 std::forward<callback_t>(callback),
+                                 *this);
     }
     //!\}
 

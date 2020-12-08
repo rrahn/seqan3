@@ -394,12 +394,11 @@ private:
         //----------------------------------------------------------------------------------------------------------
 
         return select_alignment_algorithm_t<traits_t,
-                                            config_t,
-                                            logger_policy_t,
                                             gap_cost_policy_t,
-                                            optimum_tracker_policy_t,
-                                            result_builder_policy_t,
                                             scoring_scheme_policy_t,
+                                            optimum_tracker_policy_t,
+                                            logger_policy_t,
+                                            result_builder_policy_t,
                                             alignment_matrix_policy_t>{cfg};
     }
 };

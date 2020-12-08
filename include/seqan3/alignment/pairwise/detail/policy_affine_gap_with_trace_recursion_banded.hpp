@@ -30,7 +30,7 @@ template <typename score_t, typename trace_t, bool truncate_score>
 class policy_affine_gap_with_trace_recursion_banded :
     protected policy_affine_gap_with_trace_recursion<score_t, trace_t, truncate_score>
 {
-protected:
+public:
     //!\brief The type of the base policy.
     using base_t = policy_affine_gap_with_trace_recursion<score_t, trace_t, truncate_score>;
     // Import base types.
