@@ -1,0 +1,1 @@
+seqan3_test(static_thread_pool_test.cpp)
