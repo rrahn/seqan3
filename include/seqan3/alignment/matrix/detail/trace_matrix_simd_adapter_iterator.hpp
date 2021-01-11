@@ -18,7 +18,7 @@
 #include <seqan3/alignment/matrix/detail/two_dimensional_matrix_iterator_base.hpp>
 #include <seqan3/alignment/matrix/detail/two_dimensional_matrix_iterator_concept.hpp>
 #include <seqan3/alignment/matrix/trace_directions.hpp>
-#include <seqan3/core/simd/concept.hpp>
+#include <seqan3/utility/simd/concept.hpp>
 
 namespace seqan3::detail
 {
