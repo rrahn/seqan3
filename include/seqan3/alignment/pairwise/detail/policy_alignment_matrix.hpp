@@ -23,7 +23,7 @@
 #include <seqan3/alignment/pairwise/detail/type_traits.hpp>
 #include <seqan3/core/configuration/configuration.hpp>
 #include <seqan3/core/detail/template_inspection.hpp>
-#include <seqan3/core/simd/concept.hpp>
+#include <seqan3/utility/simd/concept.hpp>
 
 namespace seqan3::detail
 {
