@@ -14,7 +14,7 @@
 
 #include <seqan3/alphabet/nucleotide/dna4.hpp>
 #include <seqan3/core/algorithm/detail/execution_handler_parallel.hpp>
-#include <seqan3/core/concept/tuple.hpp>
+#include <seqan3/utility/tuple/concept.hpp>
 #include <seqan3/range/views/chunk.hpp>
 #include <seqan3/range/views/kmer_hash.hpp>
 #include <seqan3/range/views/zip.hpp>
@@ -198,7 +198,7 @@ public:
         };
 
         // A single thread may handle between 8 and 64 bins.
-        size_t const chunk_size = std::clamp<size_t>(detail::next_power_of_two(number_of_bins / cfg.threads),
+        size_t const chunk_size = std::clamp<size_t>(std::bit_ceil(number_of_bins / cfg.threads),
                                                      8u,
                                                      64u);
         // If at least half of the threads are idle, we will make the I/O asynchronous for them.
