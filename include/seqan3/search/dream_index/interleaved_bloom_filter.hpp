@@ -524,8 +524,11 @@ private:
     //!\brief The type of the augmented seqan3::interleaved_bloom_filter.
     using ibf_t = interleaved_bloom_filter<data_layout_mode>;
 
+    // std::vector<uint64_t> _subvector_buffer{};
+    std::vector<uint64_t> _bloom_filter_indices{};
     //!\brief A pointer to the augmented seqan3::interleaved_bloom_filter.
     ibf_t const * ibf_ptr{nullptr};
+    uint32_t _hash_function_count{};
 
 public:
     class binning_bitvector;
@@ -544,13 +547,16 @@ public:
      * \private
      * \param ibf The seqan3::interleaved_bloom_filter.
      */
-    membership_agent(ibf_t const & ibf) : ibf_ptr(std::addressof(ibf))
+    membership_agent(ibf_t const & ibf) :
+        ibf_ptr{std::addressof(ibf)},
+        _hash_function_count{static_cast<uint32_t>(ibf.hash_funs)}
     {
         result_buffer.resize(ibf_ptr->bin_count());
     };
     //!\}
 
     //!\brief Stores the result of bulk_contains().
+    std::vector<binning_bitvector> result_buffer_vector;
     binning_bitvector result_buffer;
 
     /*!\name Lookup
@@ -586,23 +592,102 @@ public:
 
         for (size_t batch = 0; batch < ibf_ptr->bin_words; ++batch)
         {
-           size_t tmp{-1ULL};
+            size_t tmp{-1ULL};
            for (size_t i = 0; i < ibf_ptr->hash_funs; ++i)
            {
-               assert(bloom_filter_indices[i] < ibf_ptr->data.size());
-               tmp &= ibf_ptr->data.get_int(bloom_filter_indices[i]);
-               bloom_filter_indices[i] += 64;
+
+                assert(bloom_filter_indices[i] < ibf_ptr->data.size());
+                tmp &= ibf_ptr->data.get_int(bloom_filter_indices[i]);
+                bloom_filter_indices[i] += 64;
            }
 
-           result_buffer.set_int(batch << 6, tmp);
+            result_buffer.set_int(batch << 6, tmp);
         }
-
-        return result_buffer;
+        return result_buffer;  // Checks which bins are set per k-mer.
     }
 
     // `bulk_contains` cannot be called on a temporary, since the object the returned reference points to
     // is immediately destroyed.
-    [[nodiscard]] binning_bitvector const & bulk_contains(size_t const value) && noexcept = delete;
+    [[nodiscard]] binning_bitvector const & bulk_contains(size_t const & value) && noexcept = delete;
+
+    //!\overload
+    template <typename hash_range_t>
+    [[nodiscard]] std::vector<binning_bitvector> const & bulk_contains(hash_range_t && hash_range) & noexcept
+    {
+        assert(ibf_ptr != nullptr);
+        // assert(result_buffer.size() == ibf_ptr->bin_count());
+
+        // std::cout << "Start phase 1\n";
+        // Step 1: first iterate over the hashes and get all the binning values.
+        uint32_t const hash_range_size = std::ranges::size(hash_range); // TODO: maybe not sized range?
+        uint32_t const words_per_bin = ibf_ptr->bin_words;
+        _bloom_filter_indices.resize(hash_range_size * words_per_bin * _hash_function_count);
+        result_buffer_vector.resize(hash_range_size);
+
+        auto bf_indices_it = _bloom_filter_indices.begin();
+        std::vector<uint64_t> keys{};
+        for (size_t const hash_value : hash_range)
+        {
+            for (uint32_t i = 0; i < _hash_function_count; ++i, bf_indices_it += words_per_bin)
+            {
+                uint64_t bin_offset = ibf_ptr->hash_and_fit(hash_value, ibf_t::hash_seeds[i]);
+                *bf_indices_it = bin_offset;
+
+                // update keys:
+                if (keys.empty())
+                    keys.push_back(bin_offset);
+                else if (auto it = std::lower_bound(keys.begin(), keys.end(), bin_offset); it == keys.end() || *it != bin_offset)
+                    keys.insert(it, bin_offset);
+            }
+        }
+        // std::cout << "Start phase 2 (" << keys.size() << ")\n";
+        // We could have a map: bin_offset => {indices position}
+
+        // Step 2: Iterate once over the ibf and update every bitvector block with
+        std::vector<uint64_t> block_bitvector{};
+        block_bitvector.resize(words_per_bin);
+
+        for (uint64_t const ibf_bitvector_block : keys)
+        {
+            // Get the start of the sub bitvector.
+            // uint64_t const ibf_bitvector_block = bin_id * ibf_ptr->technical_bins;
+
+            // std::cout << "\tgather bitvector from ibf\n";
+            for (size_t bin_position = 0; bin_position < words_per_bin; ++bin_position)
+                block_bitvector[bin_position] = ibf_ptr->data.get_int(ibf_bitvector_block + (64 * bin_position));
+
+            // Iterate over the hashed values and store the block_bitvector in the respective field.
+            // std::cout << "\tupdate (" << (_bloom_filter_indices.size() / words_per_bin) << ") indices << \n";
+            for (size_t value_offset = 0; value_offset < _bloom_filter_indices.size(); value_offset += words_per_bin)
+            {
+                if (uint64_t * _data = _bloom_filter_indices.data() + value_offset; *_data == ibf_bitvector_block) // hashed index is equal to bin
+                    std::ranges::copy(block_bitvector, _data);
+            }
+        }
+
+        // std::cout << "Start phase 3\n";
+        // Step 3: Reduce the bitvector per k-mer hash value to a binning_bitvector.
+        auto bloom_filter_indices_it = _bloom_filter_indices.begin();
+        std::ranges::for_each(result_buffer_vector, [&] (auto & result_buffer)
+        {
+            std::vector<uint64_t> tmp_bin{};
+            tmp_bin.resize(words_per_bin, -1ULL);
+
+            for (uint32_t i = 0; i < _hash_function_count; ++i)
+                for (auto bin_it = tmp_bin.begin(); bin_it < tmp_bin.end(); ++bin_it, ++bloom_filter_indices_it)
+                    *bin_it &= *bloom_filter_indices_it;
+
+            for (uint32_t bin_position = 0; bin_position < words_per_bin; ++bin_position)
+                result_buffer.set_int(bin_position << 6, tmp_bin[bin_position]);
+        });
+
+        return result_buffer_vector;  // Checks which bins are set per k-mer.
+    }
+
+    // `bulk_contains` cannot be called on a temporary, since the object the returned reference points to
+    // is immediately destroyed.
+    template <typename hash_range_t>
+    [[nodiscard]] std::vector<binning_bitvector> const & bulk_contains(hash_range_t const &) && noexcept = delete;
     //!\}
 
 };
@@ -741,8 +826,11 @@ public:
 
         std::ranges::fill(result_buffer, 0);
 
-        for (auto && value : values)
-            result_buffer += membership_agent.bulk_contains(value); // We can simdify this as well, but we need another strategy for this.
+        // Step 1: get all hashes:
+        auto const & membership_vector = membership_agent.bulk_contains(values);
+
+        for (auto && bit_vector : membership_vector)
+            result_buffer += bit_vector;
 
         return result_buffer;
     }
