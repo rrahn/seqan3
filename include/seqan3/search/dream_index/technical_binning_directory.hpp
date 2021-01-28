@@ -227,6 +227,11 @@ public:
     {
         (void) technical_bins;
     }
+
+    technical_binning_directory(ibf_config const & cfg, hash_adaptor_t hash_adaptor) :
+        base_t{cfg.number_of_bins, cfg.size_of_bin, cfg.number_of_hash_functions},
+        hash_adaptor{std::move(hash_adaptor)}
+    {}
     //!\endcond
 
     /*!\brief Construct a compressed Technical Binning Directory.
@@ -269,6 +274,20 @@ public:
         return counting_agent_type<value_t>{*this};
     }
     //!\}
+
+    /*!\cond DEV
+     * \brief Serialisation support function.
+     * \tparam archive_t Type of `archive`; must satisfy seqan3::cereal_archive.
+     * \param[in] archive The archive being serialised from/to.
+     *
+     * \attention These functions are never called directly, see \ref serialisation for more details.
+     */
+    template <cereal_archive archive_t>
+    void CEREAL_SERIALIZE_FUNCTION_NAME(archive_t & archive)
+    {
+        archive(static_cast<base_t &>(*this));  // we simply archive the base class.
+    }
+    //!\endcond
 };
 
 /*!\name Type deduction guides
@@ -359,6 +378,7 @@ public:
 
         std::ranges::fill(result_buffer, 0);
 
+        // We could already fill a simd vector here with hashes: 8 hashes in parallel:
         for (auto && hash : query | tbd_ptr->hash_adaptor)
             result_buffer += membership_agent.bulk_contains(hash);
 

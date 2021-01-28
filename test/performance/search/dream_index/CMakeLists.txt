@@ -1,3 +1,4 @@
+seqan3_benchmark(analyse_counting_benchmark.cpp)
 seqan3_benchmark(bin_influence_benchmark.cpp)
 seqan3_benchmark(interleaved_bloom_filter_benchmark.cpp)
 seqan3_benchmark(technical_binning_directory_benchmark.cpp)
