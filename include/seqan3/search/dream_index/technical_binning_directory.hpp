@@ -378,9 +378,11 @@ public:
 
         std::ranges::fill(result_buffer, 0);
 
-        // We could already fill a simd vector here with hashes: 8 hashes in parallel:
-        for (auto && hash : query | tbd_ptr->hash_adaptor)
-            result_buffer += membership_agent.bulk_contains(hash);
+        // Step 1: get all hashes:
+        auto const & membership_vector = membership_agent.bulk_contains(query | tbd_ptr->hash_adaptor);
+
+        for (auto && bit_vector : membership_vector)
+            result_buffer += bit_vector;
 
         return result_buffer;
     }
