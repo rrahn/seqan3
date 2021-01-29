@@ -563,7 +563,11 @@ public:
                 for (size_t & tmp : tmp_subvector)
                 {
                     assert(*bloom_filter_indices_it < ibf_ptr->data.size());
-                    tmp &= ibf_ptr->data.get_int(*bloom_filter_indices_it);
+                    if constexpr (data_layout_mode == data_layout::uncompressed)
+                        tmp &= *(ibf_ptr->data.data() + (*bloom_filter_indices_it >> 6));
+                    else
+                        tmp &= ibf_ptr->data.get_int(*bloom_filter_indices_it);
+
                     *bloom_filter_indices_it += 64;
                 }
             }
