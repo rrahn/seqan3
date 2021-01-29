@@ -316,11 +316,14 @@ private:
     //!\brief The type of the augmented seqan3::technical_binning_directory.
     using tbd_t = technical_binning_directory<data_layout_mode, hash_adaptor_t, alph_t>;
 
+    using membership_agent_t = decltype(std::declval<tbd_t>().membership_agent());
+    using binning_bitvector_t = typename membership_agent_t::binning_bitvector;
+
     //!\brief A pointer to the augmented seqan3::technical_binning_directory.
     tbd_t const * tbd_ptr;
 
     //!\brief Store a seqan3::technical_binning_directory::membership_agent to call `bulk_contains`.
-    decltype(std::declval<tbd_t>().membership_agent()) membership_agent;
+    membership_agent_t membership_agent;
 
 public:
     /*!\name Constructors, destructor and assignment
@@ -379,9 +382,7 @@ public:
         std::ranges::fill(result_buffer, 0);
 
         // Step 1: get all hashes:
-        auto const & membership_vector = membership_agent.bulk_contains(query | tbd_ptr->hash_adaptor);
-
-        for (auto && bit_vector : membership_vector)
+        for (auto const & bit_vector : membership_agent.bulk_contains(query | tbd_ptr->hash_adaptor))
             result_buffer += bit_vector;
 
         return result_buffer;
@@ -419,7 +420,7 @@ public:
         value_t count{};
         for (auto && hash : query | tbd_ptr->hash_adaptor)
         {
-            result_buffer += membership_agent.bulk_contains(hash);
+            result_buffer += membership_agent.bulk_contains(hash, true);
             ++count;
         }
 

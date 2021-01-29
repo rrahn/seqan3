@@ -12,6 +12,8 @@
 
 #pragma once
 
+#include <memory_resource>
+
 #include <sdsl/bit_vectors.hpp>
 
 #include <seqan3/core/bit_manipulation.hpp>
@@ -532,77 +534,83 @@ public:
     {
         assert(ibf_ptr != nullptr);
         // assert(result_buffer.size() == ibf_ptr->bin_count());
-
-        // std::cout << "Start phase 1\n";
-        // Step 1: first iterate over the hashes and get all the binning values.
         uint32_t const hash_range_size = std::ranges::size(hash_range); // TODO: maybe not sized range?
-        uint32_t const words_per_bin = ibf_ptr->bin_words;
-        _bloom_filter_indices.resize(hash_range_size * words_per_bin * _hash_function_count);
-        result_buffer_vector.resize(hash_range_size);
 
-        auto bf_indices_it = _bloom_filter_indices.begin();
-        std::vector<uint64_t> keys{};
+        result_buffer_vector.resize(hash_range_size, binning_bitvector{ibf_ptr->bin_count()});
+        auto result_buffer_it = result_buffer_vector.begin();
+
+        // Step 1: Split hash value computation and ibf lookup.
+        std::vector<uint64_t> bloom_filter_indices{};
+        bloom_filter_indices.resize(hash_range_size * ibf_ptr->hash_funs);
+        auto bloom_filter_indices_it = bloom_filter_indices.begin();
         for (size_t const hash_value : hash_range)
-        {
-            for (uint32_t i = 0; i < _hash_function_count; ++i, bf_indices_it += words_per_bin)
-            {
-                uint64_t bin_offset = ibf_ptr->hash_and_fit(hash_value, ibf_t::hash_seeds[i]);
-                *bf_indices_it = bin_offset;
-
-                // update keys:
-                if (keys.empty())
-                    keys.push_back(bin_offset);
-                else if (auto it = std::lower_bound(keys.begin(), keys.end(), bin_offset); it == keys.end() || *it != bin_offset)
-                    keys.insert(it, bin_offset);
-            }
-        }
-        // std::cout << "Start phase 2 (" << keys.size() << ")\n";
-        // We could have a map: bin_offset => {indices position}
-
-        // Step 2: Iterate once over the ibf and update every bitvector block with
-        std::vector<uint64_t> block_bitvector{};
-        block_bitvector.resize(words_per_bin);
-
-        for (uint64_t const ibf_bitvector_block : keys)
-        {
-            // Get the start of the sub bitvector.
-            // uint64_t const ibf_bitvector_block = bin_id * ibf_ptr->technical_bins;
-
-            // std::cout << "\tgather bitvector from ibf\n";
-            uint64_t subvector_batch_offset = ibf_bitvector_block;
-            for (size_t bin_position = 0; bin_position < words_per_bin; ++bin_position, subvector_batch_offset += 64)
-            {
-                // assert(subvector_batch_offset < (ibf_ptr->data.size() - ibf_ptr->bin_size_));
-                // assert(word == ibf_ptr->data.get_int(subvector_batch_offset));
-                block_bitvector[bin_position] = *(ibf_ptr->data.data() + (subvector_batch_offset >> 6));
-            }
-
-            // Iterate over the hashed values and store the block_bitvector in the respective field.
-            // std::cout << "\tupdate (" << (_bloom_filter_indices.size() / words_per_bin) << ") indices << \n";
-            for (size_t value_offset = 0; value_offset < _bloom_filter_indices.size(); value_offset += words_per_bin)
-            {
-                if (uint64_t * _data = _bloom_filter_indices.data() + value_offset; *_data == ibf_bitvector_block) // hashed index is equal to bin
-                    std::ranges::copy(block_bitvector, _data);
-            }
+        { // Nice to vectorise!
+            for (size_t i = 0; i < ibf_ptr->hash_funs; ++i, ++bloom_filter_indices_it)
+                *bloom_filter_indices_it = ibf_ptr->hash_and_fit(hash_value, ibf_t::hash_seeds[i]);
         }
 
-        // std::cout << "Start phase 3\n";
-        // Step 3: Reduce the bitvector per k-mer hash value to a binning_bitvector.
-        auto bloom_filter_indices_it = _bloom_filter_indices.begin();
-        std::ranges::for_each(result_buffer_vector, [&] (auto & result_buffer)
+        // Step 2: Run ibf lookup and update bitvector.
+        std::vector<size_t> tmp_subvector{};
+        tmp_subvector.resize(ibf_ptr->bin_words);
+
+        for (bloom_filter_indices_it = bloom_filter_indices.begin();
+             bloom_filter_indices_it != bloom_filter_indices.end();)
         {
-            std::vector<uint64_t> tmp_bin{};
-            tmp_bin.resize(words_per_bin, -1ULL);
+            std::ranges::fill(tmp_subvector, -1ULL);
 
-            for (uint32_t i = 0; i < _hash_function_count; ++i)
-                for (auto bin_it = tmp_bin.begin(); bin_it < tmp_bin.end(); ++bin_it, ++bloom_filter_indices_it)
-                    *bin_it &= *bloom_filter_indices_it;
+            for (size_t i = 0; i < ibf_ptr->hash_funs; ++i, ++bloom_filter_indices_it)
+            {
+                for (size_t & tmp : tmp_subvector)
+                {
+                    assert(*bloom_filter_indices_it < ibf_ptr->data.size());
+                    tmp &= ibf_ptr->data.get_int(*bloom_filter_indices_it);
+                    *bloom_filter_indices_it += 64;
+                }
+            }
 
-            for (uint32_t bin_position = 0; bin_position < words_per_bin; ++bin_position)
-                result_buffer.set_int(bin_position << 6, tmp_bin[bin_position]);
-        });
+            // Store the result_buffer
+            for (size_t batch = 0; batch < tmp_subvector.size(); ++batch)
+                result_buffer_it->set_int(batch << 6, tmp_subvector[batch]);
+
+            ++result_buffer_it;
+        }
 
         return result_buffer_vector;  // Checks which bins are set per k-mer.
+    }
+
+    [[nodiscard]] binning_bitvector const & bulk_contains(size_t const hash_value, bool) & noexcept
+    {
+        assert(ibf_ptr != nullptr);
+        assert(result_buffer.size() == ibf_ptr->bin_count());
+        // uint32_t const hash_range_size = std::ranges::size(hash_range); // TODO: maybe not sized range?
+        result_buffer_vector.resize(1);
+
+        auto result_buffer_it = result_buffer_vector.begin();
+        result_buffer_it->resize(ibf_ptr->bin_count());
+        // for (size_t const hash_value : hash_range)
+        // {
+            std::array<size_t, 5> bloom_filter_indices;
+            std::memcpy(&bloom_filter_indices, &ibf_ptr->hash_seeds, sizeof(size_t) * ibf_ptr->hash_funs);
+
+            for (size_t i = 0; i < ibf_ptr->hash_funs; ++i)
+                bloom_filter_indices[i] = ibf_ptr->hash_and_fit(hash_value, bloom_filter_indices[i]);
+
+            for (size_t batch = 0; batch < ibf_ptr->bin_words; ++batch)
+            {
+                size_t tmp{-1ULL};
+                for (size_t i = 0; i < ibf_ptr->hash_funs; ++i)
+                {
+                    assert(bloom_filter_indices[i] < ibf_ptr->data.size());
+                    tmp &= ibf_ptr->data.get_int(bloom_filter_indices[i]);
+                    bloom_filter_indices[i] += 64;
+                }
+
+                result_buffer_it->set_int(batch << 6, tmp);
+            }
+            // ++result_buffer_it;
+        // }
+
+        return result_buffer_vector.front();  // Checks which bins are set per k-mer.
     }
 
     // `bulk_contains` cannot be called on a temporary, since the object the returned reference points to
@@ -627,6 +635,9 @@ public:
     binning_bitvector(binning_bitvector &&) = default; //!< Defaulted.
     binning_bitvector & operator=(binning_bitvector &&) = default; //!< Defaulted.
     ~binning_bitvector() = default; //!< Defaulted.
+
+    binning_bitvector(size_t new_size) : sdsl::bit_vector(new_size, 0)
+    {}
     //!\}
 
     using sdsl::bit_vector::begin;
