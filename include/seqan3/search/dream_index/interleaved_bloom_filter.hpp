@@ -653,8 +653,13 @@ public:
             // uint64_t const ibf_bitvector_block = bin_id * ibf_ptr->technical_bins;
 
             // std::cout << "\tgather bitvector from ibf\n";
-            for (size_t bin_position = 0; bin_position < words_per_bin; ++bin_position)
-                block_bitvector[bin_position] = ibf_ptr->data.get_int(ibf_bitvector_block + (64 * bin_position));
+            uint64_t subvector_batch_offset = ibf_bitvector_block;
+            for (size_t bin_position = 0; bin_position < words_per_bin; ++bin_position, subvector_batch_offset += 64)
+            {
+                // assert(subvector_batch_offset < (ibf_ptr->data.size() - ibf_ptr->bin_size_));
+                // assert(word == ibf_ptr->data.get_int(subvector_batch_offset));
+                block_bitvector[bin_position] = *(ibf_ptr->data.data() + (subvector_batch_offset >> 6));
+            }
 
             // Iterate over the hashed values and store the block_bitvector in the respective field.
             // std::cout << "\tupdate (" << (_bloom_filter_indices.size() / words_per_bin) << ") indices << \n";
