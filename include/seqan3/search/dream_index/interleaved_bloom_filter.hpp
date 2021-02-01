@@ -524,11 +524,23 @@ private:
     //!\brief The type of the augmented seqan3::interleaved_bloom_filter.
     using ibf_t = interleaved_bloom_filter<data_layout_mode>;
 
-    // std::vector<uint64_t> _subvector_buffer{};
-    std::vector<uint64_t> _bloom_filter_indices{};
+    using simd_vec_t = simd::simd_type_t<uint64_t>;
+    using simd_vec_buffer_t = std::vector<simd_vec_t, aligned_allocator<simd_vec_t, sizeof(simd_vec_t)>>;
+
+    //!\brief Precalculated seeds for multiplicative hashing. We use large irrational numbers for a uniform hashing.
+    static constexpr std::array<simd_vec_t, 5> hash_seeds{simd::fill<simd_vec_t>(13572355802537770549ULL), // 2**64 / (e/2)
+                                                          simd::fill<simd_vec_t>(13043817825332782213ULL), // 2**64 / sqrt(2)
+                                                          simd::fill<simd_vec_t>(10650232656628343401ULL), // 2**64 / sqrt(3)
+                                                          simd::fill<simd_vec_t>(16499269484942379435ULL), // 2**64 / (sqrt(5)/2)
+                                                          simd::fill<simd_vec_t>(4893150838803335377ULL)}; // 2**64 / (3*pi/5)
+
+    simd_vec_t _simd_golden_ratio{simd::fill<simd_vec_t>(11400714819323198485ULL)};
+    simd_vec_t _simd_technical_bins{};
+    simd_vec_t _simd_bin_size{};
+    simd_vec_t _simd_hash_shift{};
+
     //!\brief A pointer to the augmented seqan3::interleaved_bloom_filter.
     ibf_t const * ibf_ptr{nullptr};
-    uint32_t _hash_function_count{};
 
 public:
     class binning_bitvector;
@@ -548,8 +560,10 @@ public:
      * \param ibf The seqan3::interleaved_bloom_filter.
      */
     membership_agent(ibf_t const & ibf) :
-        ibf_ptr{std::addressof(ibf)},
-        _hash_function_count{static_cast<uint32_t>(ibf.hash_funs)}
+        _simd_technical_bins{simd::fill<simd_vec_t>(ibf.technical_bins)},
+        _simd_bin_size{simd::fill<simd_vec_t>(ibf.bin_size_)},
+        _simd_hash_shift{simd::fill<simd_vec_t>(ibf.hash_shift)},
+        ibf_ptr{std::addressof(ibf)}
     {
         result_buffer_vector.resize(1);
         result_buffer_vector.front().resize(ibf_ptr->bin_count());
@@ -621,47 +635,90 @@ public:
         // assert(result_buffer.size() == ibf_ptr->bin_count());
         uint32_t const hash_range_size = std::ranges::distance(hash_range); // TODO: maybe not sized range?
 
-        result_buffer_vector.resize(hash_range_size, binning_bitvector{ibf_ptr->bin_count()});
+        binning_bitvector tmp_bv{};
+        tmp_bv.resize(ibf_ptr->bin_count());
+        result_buffer_vector.resize(hash_range_size, tmp_bv);
         auto result_buffer_it = result_buffer_vector.begin();
 
         // Step 1: Split hash value computation and ibf lookup.
-        std::vector<uint64_t> bloom_filter_indices{};
-        bloom_filter_indices.resize(hash_range_size * ibf_ptr->hash_funs);
-        auto bloom_filter_indices_it = bloom_filter_indices.begin();
-        for (size_t const hash_value : hash_range)
+        constexpr size_t hashes_per_simd_vector = simd_traits<simd_vec_t>::length;
+
+        // Step 1a): transform to simd
+        size_t const simd_hash_range_size = (hash_range_size + (hashes_per_simd_vector - 1)) / hashes_per_simd_vector;
+        simd_vec_buffer_t _simd_hash_range{};
+        _simd_hash_range.resize(simd_hash_range_size);
+
+        {
+            std::array<size_t, hashes_per_simd_vector> hash_buffer{};
+            auto simd_hash_range_it = _simd_hash_range.begin();
+            auto hash_range_it = hash_range.begin(); // original hash range
+            while (hash_range_it != hash_range.end())
+            {
+                for (size_t simd_pos = 0;
+                     simd_pos < hashes_per_simd_vector && hash_range_it != hash_range.end();
+                     ++hash_range_it, ++simd_pos)
+                {
+                    hash_buffer[simd_pos] = *hash_range_it;
+                }
+
+                *simd_hash_range_it = simd::load<simd_vec_t>(hash_buffer.data());
+                ++simd_hash_range_it;
+            }
+
+            assert(simd_hash_range_it == _simd_hash_range.end());
+        }
+
+        // Step 1b) compute bf indices in vectorisation mode
+        size_t const simd_bf_indices_size = simd_hash_range_size * ibf_ptr->hash_funs;
+        simd_vec_buffer_t _bloom_filter_indices_simd{};
+        _bloom_filter_indices_simd.resize(simd_bf_indices_size);
+        auto bloom_filter_indices_simd_it = _bloom_filter_indices_simd.begin();
+        // size_t idx{};
+        for (simd_vec_t const & simd_hash_value : _simd_hash_range)
         { // Nice to vectorise!
-            for (size_t i = 0; i < ibf_ptr->hash_funs; ++i, ++bloom_filter_indices_it)
-                *bloom_filter_indices_it = ibf_ptr->hash_and_fit(hash_value, ibf_t::hash_seeds[i]);
+            for (size_t i = 0; i < ibf_ptr->hash_funs; ++i, ++bloom_filter_indices_simd_it)
+            {
+                *bloom_filter_indices_simd_it = hash_and_fit_simd(simd_hash_value, hash_seeds[i]);
+            }
         }
 
         // Step 2: Run ibf lookup and update bitvector.
-        std::vector<size_t> tmp_subvector{};
-        tmp_subvector.resize(ibf_ptr->bin_words);
+        simd_vec_buffer_t tmp_subvector_simd{};
+        tmp_subvector_simd.resize(ibf_ptr->bin_words);
 
-        for (bloom_filter_indices_it = bloom_filter_indices.begin();
-             bloom_filter_indices_it != bloom_filter_indices.end();)
+        for (bloom_filter_indices_simd_it = _bloom_filter_indices_simd.begin();
+             bloom_filter_indices_simd_it != _bloom_filter_indices_simd.end();)
         {
-            std::ranges::fill(tmp_subvector, -1ULL);
+            std::ranges::fill(tmp_subvector_simd, simd::fill<simd_vec_t>(-1ULL));
+            size_t const remaining_result_size =
+                std::min<size_t>(hashes_per_simd_vector,
+                                 std::ranges::distance(result_buffer_it, result_buffer_vector.end()));
 
-            for (size_t i = 0; i < ibf_ptr->hash_funs; ++i, ++bloom_filter_indices_it)
+            for (size_t i = 0; i < ibf_ptr->hash_funs; ++i, ++bloom_filter_indices_simd_it)
             {
-                for (size_t & tmp : tmp_subvector)
+                for (simd_vec_t & tmp_simd : tmp_subvector_simd)
                 {
-                    assert(*bloom_filter_indices_it < ibf_ptr->data.size());
-                    if constexpr (data_layout_mode == data_layout::uncompressed)
-                        tmp &= *(ibf_ptr->data.data() + (*bloom_filter_indices_it >> 6));
-                    else
-                        tmp &= ibf_ptr->data.get_int(*bloom_filter_indices_it);
+                    // simd_vec_t index = (*bloom_filter_indices_simd_it) >> simd::fill<simd_vec_t>(6);
+                    // tmp_simd = reinterpret_cast<simd_vec_t>(_mm512_i64gather_epi64(reinterpret_cast<__m512i const &>(index), ibf_ptr->data.data(), 1));
+                    for (size_t simd_pos = 0; simd_pos < remaining_result_size; ++simd_pos)  // maybe gather?
+                    {
+                        assert((*bloom_filter_indices_simd_it)[simd_pos] < ibf_ptr->data.size());
+                        if constexpr (data_layout_mode == data_layout::uncompressed)
+                            tmp_simd[simd_pos] &= *(ibf_ptr->data.data() + ((*bloom_filter_indices_simd_it)[simd_pos] >> 6));
+                        else
+                            tmp_simd[simd_pos] &= ibf_ptr->data.get_int((*bloom_filter_indices_simd_it)[simd_pos]);
+                    }
 
-                    *bloom_filter_indices_it += 64;
+                    *bloom_filter_indices_simd_it += simd::fill<simd_vec_t>(64);
                 }
             }
 
             // Store the result_buffer
-            for (size_t batch = 0; batch < tmp_subvector.size(); ++batch)
-                result_buffer_it->set_int(batch << 6, tmp_subvector[batch]);
-
-            ++result_buffer_it;
+            for (size_t simd_pos = 0; simd_pos < remaining_result_size; ++simd_pos, ++result_buffer_it)  // better scatter?
+            {
+                for (size_t batch = 0; batch < tmp_subvector_simd.size(); ++batch)
+                    result_buffer_it->set_int(batch << 6, tmp_subvector_simd[batch][simd_pos]);
+            }
         }
 
         return result_buffer_vector;  // Checks which bins are set per k-mer.
@@ -672,6 +729,26 @@ public:
     template <typename hash_range_t>
     [[nodiscard]] std::vector<binning_bitvector> const & bulk_contains(hash_range_t const &) && noexcept = delete;
     //!\}
+
+
+private:
+
+    template <simd::simd_concept simd_t>
+    constexpr simd_t hash_and_fit_simd(simd_t hash, simd_t const & seed) noexcept
+    {
+        simd_t _hash = hash * seed;
+        // assert(hash_shift < 64);
+        _hash ^= _hash >> _simd_hash_shift; // XOR and shift higher bits into lower bits
+        _hash *= _simd_golden_ratio; // = 2^64 / golden_ration, to expand h to 64 bit range
+        // TODO: Can we emulate a fastrange multiply or is it just easier to run the vectorised modulo operation.
+        for (size_t i  = 0; i < simd_traits<simd_t>::length; ++i)
+            _hash[i] = static_cast<uint64_t>((static_cast<__uint128_t>(_hash[i]) * static_cast<__uint128_t>(_simd_bin_size[i])) >> 64);
+
+        // _hash %= _simd_bin_size;
+        _hash *= _simd_technical_bins;
+
+        return _hash;
+    }
 
 };
 
@@ -699,6 +776,7 @@ public:
     using sdsl::bit_vector::operator==;
     using sdsl::bit_vector::operator[];
     using sdsl::bit_vector::size;
+    using sdsl::bit_vector::data;
 
 #if SEQAN3_DOXYGEN_ONLY(1)0
     //!\brief The iterator type of the `binning_bitvector`;
