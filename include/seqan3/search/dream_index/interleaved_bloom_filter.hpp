@@ -585,7 +585,7 @@ public:
     [[nodiscard]] binning_bitvector const & bulk_contains(size_t const hash_value, bool) & noexcept
     {
         assert(ibf_ptr != nullptr);
-        assert(result_buffer.size() == ibf_ptr->bin_count());
+        // assert(result_buffer.size() == ibf_ptr->bin_count());
         // uint32_t const hash_range_size = std::ranges::size(hash_range); // TODO: maybe not sized range?
         result_buffer_vector.resize(1);
 
