@@ -19,6 +19,11 @@
 #include <seqan3/core/bit_manipulation.hpp>
 #include <seqan3/core/concept/cereal.hpp>
 #include <seqan3/core/detail/strong_type.hpp>
+#include <seqan3/range/container/aligned_allocator.hpp>
+#include <seqan3/utility/simd/concept.hpp>
+#include <seqan3/utility/simd/algorithm.hpp>
+#include <seqan3/utility/simd/simd.hpp>
+#include <seqan3/utility/simd/simd_traits.hpp>
 #include <seqan3/std/algorithm>
 
 namespace seqan3
@@ -702,11 +707,11 @@ private:
  * \include test/snippet/search/dream_index/counting_vector.cpp
  */
 template <std::integral value_t>
-class counting_vector : public std::vector<value_t>
+class counting_vector : public std::vector<uint8_t, aligned_allocator<uint8_t, sizeof(simd_type_t<uint8_t>)>>
 {
 private:
     //!\brief The base type.
-    using base_t = std::vector<value_t>;
+    using base_t = std::vector<uint8_t, aligned_allocator<uint8_t, sizeof(simd_type_t<uint8_t>)>>;
 public:
     /*!\name Constructors, destructor and assignment
      * \{
@@ -741,25 +746,18 @@ public:
     {
         assert(this->size() >= rhs.size()); // The counting vector may be bigger than what we need.
 
+        using uint8x64_t = simd_type_t<uint8_t>;
+        uint8x64_t one_mask = simd::fill<uint8x64_t>(1);
+
         // Each iteration can handle 64 bits, so we need to iterate `((rhs.size() + 63) >> 6` many times
-        for (size_t batch = 0, bin = 0; batch < ((rhs.size() + 63) >> 6); bin = 64 * ++batch)
+        for (size_t batch = 0; batch < ((rhs.size() + 63) >> 6); ++batch)
         {
-            size_t tmp = rhs.get_int(batch * 64); // get 64 bits starting at position `batch * 64`
-            if (tmp ^ (1ULL<<63)) // This is a special case, because we would shift by 64 (UB) in the while loop.
-            {
-                while (tmp > 0)
-                {
-                    // Jump to the next 1 and increment the corresponding vector entry.
-                    uint8_t step = std::countr_zero(tmp);
-                    bin += step++;
-                    tmp >>= step;
-                    ++(*this)[bin++];
-                }
-            }
-            else
-            {
-                ++(*this)[bin + 63];
-            }
+            // We need to align the data
+            size_t const bin = batch * 64;  // 64 * 8 bit => 64 byte.
+
+            __m512i * src = reinterpret_cast<__m512i *>(this->data() + bin);
+            __mmask64 k = static_cast<__mmask64>(rhs.get_int(bin));
+            *src = _mm512_mask_add_epi8(*src, k, *src, reinterpret_cast<__m512i &>(one_mask));
         }
         return *this;
     }
