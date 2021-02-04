@@ -503,8 +503,6 @@ public:
         archive(bin_words);
         archive(hash_funs);
         archive(data);
-
-        std::cout << "words per bin: " << bin_words << "\n";
     }
     //!\endcond
 };
@@ -630,7 +628,7 @@ public:
     [[nodiscard]] binning_bitvector const & bulk_contains(size_t const & value) && noexcept = delete;
 
     //!\overload
-    template <typename hash_range_t>
+    template <std::ranges::input_range hash_range_t>
     [[nodiscard]] std::vector<binning_bitvector> const & bulk_contains(hash_range_t && hash_range) & noexcept
     {
         assert(ibf_ptr != nullptr);
@@ -929,11 +927,19 @@ public:
 
         std::ranges::fill(result_buffer, 0);
 
-        // Step 1: get all hashes:
-        auto const & membership_vector = membership_agent.bulk_contains(values);
+        if constexpr (data_layout_mode == data_layout::compressed)
+        {
+            for (auto const & value : values)
+                result_buffer += membership_agent.bulk_contains(value);
+        }
+        else
+        {
+            auto const & membership_vector = membership_agent.bulk_contains(values);
 
-        for (auto && bit_vector : membership_vector)
-            result_buffer += bit_vector;
+            for (auto && bit_vector : membership_vector)
+                result_buffer += bit_vector;
+        }
+        // Step 1: get all hashes:
 
         return result_buffer;
     }
