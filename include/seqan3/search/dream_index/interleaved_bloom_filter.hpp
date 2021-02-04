@@ -629,11 +629,11 @@ public:
 
     //!\overload
     template <std::ranges::input_range hash_range_t>
-    [[nodiscard]] std::vector<binning_bitvector> const & bulk_contains(hash_range_t && hash_range) & noexcept
+    [[nodiscard]] std::vector<binning_bitvector> const & bulk_contains(hash_range_t && _simd_hash_range, size_t const hash_range_size) & noexcept
     {
         assert(ibf_ptr != nullptr);
         // assert(result_buffer.size() == ibf_ptr->bin_count());
-        uint32_t const hash_range_size = std::ranges::distance(hash_range); // TODO: maybe not sized range?
+        // uint32_t const hash_range_size = std::ranges::distance(hash_range); // TODO: maybe not sized range?
 
         // TODO: SDSL seems to always reallocate when calling resize on the bit vector.
         // this is probably because of the difference between aligned memory and the extra 8 byte needed.
@@ -656,29 +656,29 @@ public:
         constexpr size_t hashes_per_simd_vector = simd_traits<simd_vec_t>::length;
 
         // Step 1a): transform to simd
-        size_t const simd_hash_range_size = (hash_range_size + (hashes_per_simd_vector - 1)) / hashes_per_simd_vector;
-        simd_vec_buffer_t _simd_hash_range{};
-        _simd_hash_range.resize(simd_hash_range_size);
+        size_t const simd_hash_range_size = _simd_hash_range.size(); //(hash_range_size + (hashes_per_simd_vector - 1)) / hashes_per_simd_vector;
+        // simd_vec_buffer_t _simd_hash_range{};
+        // _simd_hash_range.resize(simd_hash_range_size);
 
-        {
-            std::array<size_t, hashes_per_simd_vector> hash_buffer{};
-            auto simd_hash_range_it = _simd_hash_range.begin();
-            auto hash_range_it = hash_range.begin(); // original hash range
-            while (hash_range_it != hash_range.end())
-            {
-                for (size_t simd_pos = 0;
-                     simd_pos < hashes_per_simd_vector && hash_range_it != hash_range.end();
-                     ++hash_range_it, ++simd_pos)
-                {
-                    hash_buffer[simd_pos] = *hash_range_it;
-                }
+        // {
+        //     alignas(sizeof(simd_vec_t)) std::array<size_t, hashes_per_simd_vector> hash_buffer{};
+        //     auto simd_hash_range_it = _simd_hash_range.begin();
+        //     auto hash_range_it = hash_range.begin(); // original hash range
+        //     while (hash_range_it != hash_range.end())
+        //     {
+        //         for (size_t simd_pos = 0;
+        //              simd_pos < hashes_per_simd_vector && hash_range_it != hash_range.end();
+        //              ++hash_range_it, ++simd_pos)
+        //         {
+        //             hash_buffer[simd_pos] = *hash_range_it;
+        //         }
 
-                *simd_hash_range_it = simd::load<simd_vec_t>(hash_buffer.data());
-                ++simd_hash_range_it;
-            }
+        //         *simd_hash_range_it = *reinterpret_cast<simd_vec_t *>(hash_buffer.data());
+        //         ++simd_hash_range_it;
+        //     }
 
-            assert(simd_hash_range_it == _simd_hash_range.end());
-        }
+        //     assert(simd_hash_range_it == _simd_hash_range.end());
+        // }
 
         // Step 1b) compute bf indices in vectorisation mode
         size_t const simd_bf_indices_size = simd_hash_range_size * ibf_ptr->hash_funs;
@@ -786,7 +786,6 @@ private:
 
         return _hash;
     }
-
 };
 
 //!\brief A bitvector representing the result of a call to `bulk_contains` of the seqan3::interleaved_bloom_filter.
@@ -863,6 +862,11 @@ private:
     //!\brief The type of the counting vector depending on the simd mode.
     using counting_vector_type = counting_vector<value_t, simd_enabled>;
 
+    using simd_t = simd::simd_type_t<uint64_t>;
+    using simd_vec_t = std::vector<simd_t, aligned_allocator<simd_t, sizeof(simd_t)>>;
+
+    static constexpr size_t hashes_per_simd_vector = simd_traits<simd_t>::length;
+
     //!\brief A pointer to the augmented seqan3::interleaved_bloom_filter.
     ibf_t const * ibf_ptr{nullptr};
 
@@ -892,6 +896,8 @@ public:
 
     //!\brief Stores the result of bulk_count().
     counting_vector_type result_buffer{};
+
+    simd_vec_t _simd_hash_range{};
 
     /*!\name Counting
      * \{
@@ -934,12 +940,12 @@ public:
         }
         else
         {
-            auto const & membership_vector = membership_agent.bulk_contains(values);
+            size_t const hash_range_size = compute_simd_hash(values);
+            auto const & membership_vector = membership_agent.bulk_contains(_simd_hash_range, hash_range_size);
 
             for (auto && bit_vector : membership_vector)
                 result_buffer += bit_vector;
         }
-        // Step 1: get all hashes:
 
         return result_buffer;
     }
@@ -950,6 +956,37 @@ public:
     [[nodiscard]] counting_vector_type const & bulk_count(value_range_t && values) && noexcept = delete;
     //!\}
 
+private:
+
+    template <std::ranges::range value_range_t>
+    size_t compute_simd_hash(value_range_t const & hash_range)
+    {
+        // Step 1a): transform to simd
+        size_t const hash_range_size = std::ranges::distance(hash_range);
+        size_t const simd_hash_range_size = (hash_range_size + (hashes_per_simd_vector - 1)) / hashes_per_simd_vector;
+
+        _simd_hash_range.resize(simd_hash_range_size);
+
+        {
+            auto simd_hash_range_it = _simd_hash_range.begin();
+            auto hash_range_it = hash_range.begin(); // original hash range
+            while (hash_range_it != hash_range.end())
+            {
+                for (size_t simd_pos = 0;
+                     simd_pos < hashes_per_simd_vector && hash_range_it != hash_range.end();
+                     ++hash_range_it, ++simd_pos)
+                {
+                    (*simd_hash_range_it)[simd_pos] = *hash_range_it;
+                }
+
+                ++simd_hash_range_it;
+            }
+
+            assert(simd_hash_range_it == _simd_hash_range.end());
+        }
+
+        return hash_range_size;
+    }
 };
 
 //!\}
