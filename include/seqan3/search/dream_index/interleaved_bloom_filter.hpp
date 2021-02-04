@@ -503,6 +503,8 @@ public:
         archive(bin_words);
         archive(hash_funs);
         archive(data);
+
+        std::cout << "words per bin: " << bin_words << "\n";
     }
     //!\endcond
 };
@@ -635,9 +637,21 @@ public:
         // assert(result_buffer.size() == ibf_ptr->bin_count());
         uint32_t const hash_range_size = std::ranges::distance(hash_range); // TODO: maybe not sized range?
 
-        binning_bitvector tmp_bv{};
-        tmp_bv.resize(ibf_ptr->bin_count());
-        result_buffer_vector.resize(hash_range_size, tmp_bv);
+        // TODO: SDSL seems to always reallocate when calling resize on the bit vector.
+        // this is probably because of the difference between aligned memory and the extra 8 byte needed.
+        // But this seems like a very wrong place to add the 8 byte.
+        if (size_t old_size = result_buffer_vector.size(); old_size != hash_range_size)
+        {
+            result_buffer_vector.resize(hash_range_size);
+            auto it = std::ranges::next(result_buffer_vector.begin(), old_size, result_buffer_vector.end());
+            std::ranges::for_each(it,
+                                  result_buffer_vector.end(),
+                                  [bin_count = ibf_ptr->bin_count()] (binning_bitvector & vec)
+            {
+                vec.resize(bin_count);
+            });
+        }
+
         auto result_buffer_it = result_buffer_vector.begin();
 
         // Step 1: Split hash value computation and ibf lookup.
@@ -683,42 +697,67 @@ public:
         }
 
         // Step 2: Run ibf lookup and update bitvector.
-        simd_vec_buffer_t tmp_subvector_simd{};
-        tmp_subvector_simd.resize(ibf_ptr->bin_words);
+        // simd_vec_buffer_t tmp_subvector_simd{};
+        // tmp_subvector_simd.resize(ibf_ptr->bin_words);
+        size_t const vectors_per_bin = (ibf_ptr->bin_words + hashes_per_simd_vector - 1) / hashes_per_simd_vector;
 
         for (bloom_filter_indices_simd_it = _bloom_filter_indices_simd.begin();
              bloom_filter_indices_simd_it != _bloom_filter_indices_simd.end();)
         {
-            std::ranges::fill(tmp_subvector_simd, simd::fill<simd_vec_t>(-1ULL));
-            size_t const remaining_result_size =
+            // std::ranges::fill(tmp_subvector_simd, simd::fill<simd_vec_t>(-1ULL));
+            size_t const remaining_size =
                 std::min<size_t>(hashes_per_simd_vector,
                                  std::ranges::distance(result_buffer_it, result_buffer_vector.end()));
 
+            // initialise the next simd many buffers.
+            std::ranges::for_each(result_buffer_it, result_buffer_it + remaining_size, [&] (binning_bitvector & res_buffer)
+            {
+                assert(res_buffer.data() != nullptr);
+                assert(reinterpret_cast<std::uintptr_t>(res_buffer.data()) % 64ull == 0);
+                for (size_t vector_id = 0; vector_id < vectors_per_bin; ++vector_id)
+                    *reinterpret_cast<simd_vec_t *>(res_buffer.data() + (vector_id << 3)) = simd::fill<simd_vec_t>(-1ULL);
+            });
+
             for (size_t i = 0; i < ibf_ptr->hash_funs; ++i, ++bloom_filter_indices_simd_it)
             {
-                for (simd_vec_t & tmp_simd : tmp_subvector_simd)
+                decltype(result_buffer_it) result_it = result_buffer_it;
+                *bloom_filter_indices_simd_it >>= 6;
+                for (size_t vec_pos = 0; vec_pos < remaining_size; ++vec_pos, ++result_it)
                 {
-                    // simd_vec_t index = (*bloom_filter_indices_simd_it) >> simd::fill<simd_vec_t>(6);
-                    // tmp_simd = reinterpret_cast<simd_vec_t>(_mm512_i64gather_epi64(reinterpret_cast<__m512i const &>(index), ibf_ptr->data.data(), 1));
-                    for (size_t simd_pos = 0; simd_pos < remaining_result_size; ++simd_pos)  // maybe gather?
+                    uint64_t bf_index = (*bloom_filter_indices_simd_it)[vec_pos];
+                    assert(reinterpret_cast<std::uintptr_t>(ibf_ptr->data.data() + bf_index) % 64ull == 0);
+                    assert(reinterpret_cast<std::uintptr_t>(result_it->data()) % 64ull == 0);
+                    for (size_t vector_id = 0; vector_id < vectors_per_bin; ++vector_id)
                     {
-                        assert((*bloom_filter_indices_simd_it)[simd_pos] < ibf_ptr->data.size());
-                        if constexpr (data_layout_mode == data_layout::uncompressed)
-                            tmp_simd[simd_pos] &= *(ibf_ptr->data.data() + ((*bloom_filter_indices_simd_it)[simd_pos] >> 6));
-                        else
-                            tmp_simd[simd_pos] &= ibf_ptr->data.get_int((*bloom_filter_indices_simd_it)[simd_pos]);
+                        size_t const data_offset = vector_id << 3;
+                        *reinterpret_cast<simd_vec_t *>(result_it->data() + data_offset) &=
+                            *reinterpret_cast<simd_vec_t const *>(ibf_ptr->data.data() + bf_index + data_offset);
                     }
+                    // for (simd_vec_t & tmp_simd : tmp_subvector_simd)
+                    // {
+                    //     // simd_vec_t index = (*bloom_filter_indices_simd_it) >> simd::fill<simd_vec_t>(6);
+                    //     // tmp_simd = reinterpret_cast<simd_vec_t>(_mm512_i64gather_epi64(reinterpret_cast<__m512i const &>(index), ibf_ptr->data.data(), 1));
+                    //     for (size_t simd_pos = 0; simd_pos < remaining_result_size; ++simd_pos)  // maybe gather?
+                    //     {
+                    //         assert((*bloom_filter_indices_simd_it)[simd_pos] < ibf_ptr->data.size());
+                    //         if constexpr (data_layout_mode == data_layout::uncompressed)
+                    //             tmp_simd[simd_pos] &= *(ibf_ptr->data.data() + ((*bloom_filter_indices_simd_it)[simd_pos] >> 6));
+                    //         else
+                    //             tmp_simd[simd_pos] &= ibf_ptr->data.get_int((*bloom_filter_indices_simd_it)[simd_pos]);
+                    //     }
 
-                    *bloom_filter_indices_simd_it += simd::fill<simd_vec_t>(64);
+                    //     *bloom_filter_indices_simd_it += simd::fill<simd_vec_t>(64);
+                    // }
                 }
             }
+            result_buffer_it += hashes_per_simd_vector;
 
             // Store the result_buffer
-            for (size_t simd_pos = 0; simd_pos < remaining_result_size; ++simd_pos, ++result_buffer_it)  // better scatter?
-            {
-                for (size_t batch = 0; batch < tmp_subvector_simd.size(); ++batch)
-                    result_buffer_it->set_int(batch << 6, tmp_subvector_simd[batch][simd_pos]);
-            }
+            // for (size_t simd_pos = 0; simd_pos < remaining_result_size; ++simd_pos, ++result_buffer_it)  // better scatter?
+            // {
+            //     for (size_t batch = 0; batch < tmp_subvector_simd.size(); ++batch)
+            //         result_buffer_it->set_int(batch << 6, tmp_subvector_simd[batch][simd_pos]);
+            // }
         }
 
         return result_buffer_vector;  // Checks which bins are set per k-mer.
