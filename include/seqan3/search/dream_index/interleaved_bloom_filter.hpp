@@ -551,11 +551,11 @@ public:
      * thread.
      */
     template <typename hash_range_t>
-    [[nodiscard]] std::vector<binning_bitvector> const & bulk_contains(hash_range_t && hash_range) & noexcept
+    [[nodiscard]] std::vector<binning_bitvector> const & bulk_contains(hash_range_t && _simd_hash_range, size_t const hash_range_size) & noexcept
     {
         assert(ibf_ptr != nullptr);
         // assert(result_buffer.size() == ibf_ptr->bin_count());
-        uint32_t const hash_range_size = std::ranges::size(hash_range); // TODO: maybe not sized range?
+        // uint32_t const hash_range_size = std::ranges::size(hash_range); // TODO: maybe not sized range?
 
         // TODO: SDSL seems to always reallocate when calling resize on the bit vector.
         // this is probably because of the difference between aligned memory and the extra 8 byte needed.
@@ -578,29 +578,29 @@ public:
         constexpr size_t hashes_per_simd_vector = simd_traits<simd_vec_t>::length;
 
         // Step 1a): transform to simd
-        size_t const simd_hash_range_size = (hash_range_size + (hashes_per_simd_vector - 1)) / hashes_per_simd_vector;
-        simd_vec_buffer_t _simd_hash_range{};
-        _simd_hash_range.resize(simd_hash_range_size);
+        size_t const simd_hash_range_size = _simd_hash_range.size(); //(hash_range_size + (hashes_per_simd_vector - 1)) / hashes_per_simd_vector;
+        // simd_vec_buffer_t _simd_hash_range{};
+        // _simd_hash_range.resize(simd_hash_range_size);
 
-        {
-            std::array<size_t, hashes_per_simd_vector> hash_buffer{};
-            auto simd_hash_range_it = _simd_hash_range.begin();
-            auto hash_range_it = hash_range.begin(); // original hash range
-            while (hash_range_it != hash_range.end())
-            {
-                for (size_t simd_pos = 0;
-                     simd_pos < hashes_per_simd_vector && hash_range_it != hash_range.end();
-                     ++hash_range_it, ++simd_pos)
-                {
-                    hash_buffer[simd_pos] = *hash_range_it;
-                }
+        // {
+        //     alignas(sizeof(simd_vec_t)) std::array<size_t, hashes_per_simd_vector> hash_buffer{};
+        //     auto simd_hash_range_it = _simd_hash_range.begin();
+        //     auto hash_range_it = hash_range.begin(); // original hash range
+        //     while (hash_range_it != hash_range.end())
+        //     {
+        //         for (size_t simd_pos = 0;
+        //              simd_pos < hashes_per_simd_vector && hash_range_it != hash_range.end();
+        //              ++hash_range_it, ++simd_pos)
+        //         {
+        //             hash_buffer[simd_pos] = *hash_range_it;
+        //         }
 
-                *simd_hash_range_it = simd::load<simd_vec_t>(hash_buffer.data());
-                ++simd_hash_range_it;
-            }
+        //         *simd_hash_range_it = *reinterpret_cast<simd_vec_t *>(hash_buffer.data());
+        //         ++simd_hash_range_it;
+        //     }
 
-            assert(simd_hash_range_it == _simd_hash_range.end());
-        }
+        //     assert(simd_hash_range_it == _simd_hash_range.end());
+        // }
 
         // Step 1b) compute bf indices in vectorisation mode
         size_t const simd_bf_indices_size = simd_hash_range_size * ibf_ptr->hash_funs;
@@ -743,7 +743,6 @@ private:
 
         return _hash;
     }
-
 };
 
 //!\brief A bitvector representing the result of a call to `bulk_contains` of the seqan3::interleaved_bloom_filter.

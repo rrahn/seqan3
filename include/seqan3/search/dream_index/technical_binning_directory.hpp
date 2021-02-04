@@ -319,6 +319,10 @@ private:
     using membership_agent_t = decltype(std::declval<tbd_t>().membership_agent());
     using binning_bitvector_t = typename membership_agent_t::binning_bitvector;
 
+    using simd_t = simd::simd_type_t<uint64_t>;
+    using simd_vec_t = std::vector<simd_t, aligned_allocator<simd_t, sizeof(simd_t)>>;
+    static constexpr size_t hashes_per_simd_vector = simd_traits<simd_t>::length;
+
     //!\brief A pointer to the augmented seqan3::technical_binning_directory.
     tbd_t const * tbd_ptr;
 
@@ -348,6 +352,8 @@ public:
 
     //!\brief Stores the result of bulk_contains().
     counting_vector<value_t> result_buffer;
+
+    simd_vec_t _simd_hash_range{};
 
     /*!\name Counting
      * \{
@@ -379,10 +385,13 @@ public:
                       "The alphabet of the query must be convertible to the alphabet of the Technical Binning "
                       "Directory.");
 
+        // Can we get rid of this?
         std::ranges::fill(result_buffer, 0);
 
+        size_t const hash_range_size = compute_simd_hash(query);
+
         // Step 1: get all hashes:
-        for (auto const & bit_vector : membership_agent.bulk_contains(query | tbd_ptr->hash_adaptor))
+        for (auto const & bit_vector : membership_agent.bulk_contains(_simd_hash_range, hash_range_size))
             result_buffer += bit_vector;
 
         return result_buffer;
@@ -432,6 +441,38 @@ public:
     counting_vector<value_t> const & count_query(size_t const value) && noexcept = delete;
     //!\}
 
+private:
+
+    template <typename query_t>
+    size_t compute_simd_hash(query_t const & query)
+    {
+        // Step 1a): transform to simd
+        auto hash_range = query | tbd_ptr->hash_adaptor;
+        size_t const hash_range_size = std::ranges::size(hash_range);
+        size_t const simd_hash_range_size = (hash_range_size + (hashes_per_simd_vector - 1)) / hashes_per_simd_vector;
+
+        _simd_hash_range.resize(simd_hash_range_size);
+
+        {
+            auto simd_hash_range_it = _simd_hash_range.begin();
+            auto hash_range_it = hash_range.begin(); // original hash range
+            while (hash_range_it != hash_range.end())
+            {
+                for (size_t simd_pos = 0;
+                     simd_pos < hashes_per_simd_vector && hash_range_it != hash_range.end();
+                     ++hash_range_it, ++simd_pos)
+                {
+                    (*simd_hash_range_it)[simd_pos] = *hash_range_it;
+                }
+
+                ++simd_hash_range_it;
+            }
+
+            assert(simd_hash_range_it == _simd_hash_range.end());
+        }
+
+        return hash_range_size;
+    }
 };
 
 //!\}
