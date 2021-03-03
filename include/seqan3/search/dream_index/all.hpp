@@ -16,4 +16,5 @@
 
  #pragma once
 
+ #include <seqan3/search/dream_index/counting_vector.hpp>
  #include <seqan3/search/dream_index/interleaved_bloom_filter.hpp>
