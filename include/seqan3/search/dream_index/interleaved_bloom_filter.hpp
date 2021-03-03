@@ -586,8 +586,8 @@ class interleaved_bloom_filter<data_layout_mode>::membership_agent::binning_bitv
 {
 public:
     /*!\name Constructors, destructor and assignment
-        * \{
-        */
+     * \{
+     */
     binning_bitvector() = default; //!< Defaulted.
     binning_bitvector(binning_bitvector const &) = default; //!< Defaulted.
     binning_bitvector & operator=(binning_bitvector const &) = default; //!< Defaulted.
