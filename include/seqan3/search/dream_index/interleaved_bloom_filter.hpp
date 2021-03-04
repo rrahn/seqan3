@@ -191,8 +191,12 @@ public:
     static constexpr data_layout data_layout_mode = data_layout_mode_;
 
     class membership_agent; // documented upon definition below
-    template <std::integral value_t>
+    template <std::integral value_t, bool = false>
     class counting_agent_type; // documented upon definition below
+
+    //!\brief The counting agent type in simd mode.
+    template <std::integral value_t>
+    using simd_counting_agent_type = counting_agent_type<value_t, true>;
 
     /*!\name Constructors, destructor and assignment
      * \{
@@ -394,6 +398,28 @@ public:
     counting_agent_type<value_t> counting_agent() const
     {
         return counting_agent_type<value_t>{*this};
+    }
+
+    /*!\brief Returns a seqan3::interleaved_bloom_filter::simd_counting_agent_type to be used for counting.
+     * \attention Calling seqan3::interleaved_bloom_filter::increase_bin_number_to invalidates all
+     * `seqan3::interleaved_bloom_filter::simd_counting_agent_type`s constructed for this Interleaved Bloom Filter.
+     *
+     * \details
+     *
+     * This simd counting agent allows to use simd instructions to increment the counters.
+     * It requires the AVX512 instruction set. If the binary is compiled with another instruction set,
+     * then a static assertion will be raised.
+     *
+     * \sa seqan3::interleaved_bloom_filter::counting_agent
+     */
+    template <typename value_t = uint16_t>
+    simd_counting_agent_type<value_t> simd_counting_agent() const
+    {
+        static_assert(simd_traits<simd_type_t<value_t>>::max_length == 64,
+                      "The simd counting agent requires the AVX512 instruction set! "
+                      "Please make sure that the binary is compiled with the correct instruction set.");
+
+        return simd_counting_agent_type<value_t>{*this};
     }
     //!\}
 
@@ -628,7 +654,7 @@ private:
     friend class membership_agent;
     using sdsl::bit_vector::resize;
     using sdsl::bit_vector::set_int;
-    template <std::integral value_t>
+    template <std::integral value_t, bool>
     friend class counting_vector;
 };
 
@@ -642,12 +668,14 @@ private:
  * \include test/snippet/search/dream_index/counting_agent.cpp
  */
 template <data_layout data_layout_mode>
-template <std::integral value_t>
+template <std::integral value_t, bool simd_enabled>
 class interleaved_bloom_filter<data_layout_mode>::counting_agent_type
 {
 private:
     //!\brief The type of the augmented seqan3::interleaved_bloom_filter.
     using ibf_t = interleaved_bloom_filter<data_layout_mode>;
+    //!\brief The type of the counting vector depending on the simd mode.
+    using counting_vector_type = counting_vector<value_t, simd_enabled>;
 
     //!\brief A pointer to the augmented seqan3::interleaved_bloom_filter.
     ibf_t const * ibf_ptr{nullptr};
@@ -677,7 +705,7 @@ public:
     //!\}
 
     //!\brief Stores the result of bulk_count().
-    counting_vector<value_t> result_buffer;
+    counting_vector_type result_buffer{};
 
     /*!\name Counting
      * \{
@@ -702,7 +730,7 @@ public:
      * seqan3::interleaved_bloom_filter::counting_agent_type for each thread.
      */
     template <std::ranges::range value_range_t>
-    [[nodiscard]] counting_vector<value_t> const & bulk_count(value_range_t && values) & noexcept
+    [[nodiscard]] counting_vector_type const & bulk_count(value_range_t && values) & noexcept
     {
         assert(ibf_ptr != nullptr);
         assert(result_buffer.size() == ibf_ptr->bin_count());
@@ -714,7 +742,7 @@ public:
         std::ranges::fill(result_buffer, 0);
 
         for (auto && value : values)
-            result_buffer += membership_agent.bulk_contains(value);
+            result_buffer += membership_agent.bulk_contains(value); // We can simdify this as well, but we need another strategy for this.
 
         return result_buffer;
     }
@@ -722,7 +750,7 @@ public:
     // `bulk_count` cannot be called on a temporary, since the object the returned reference points to
     // is immediately destroyed.
     template <std::ranges::range value_range_t>
-    [[nodiscard]] counting_vector<value_t> const & bulk_count(value_range_t && values) && noexcept = delete;
+    [[nodiscard]] counting_vector_type const & bulk_count(value_range_t && values) && noexcept = delete;
     //!\}
 
 };

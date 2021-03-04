@@ -157,12 +157,12 @@ TYPED_TEST(interleaved_bloom_filter_test, counting)
         counting += agent.bulk_contains(hash);
     }
     std::vector<size_t> expected(128, 128);
-    EXPECT_EQ(counting, expected);
+    EXPECT_RANGE_EQ(counting, expected);
 
     // Counting vectors can be added together
     std::vector<size_t> expected2(128, 256);
     counting += counting;
-    EXPECT_EQ(counting, expected2);
+    EXPECT_RANGE_EQ(counting, expected2);
 }
 
 TYPED_TEST(interleaved_bloom_filter_test, counting_agent)
@@ -209,14 +209,14 @@ TYPED_TEST(interleaved_bloom_filter_test, counting_no_ub)
     std::vector<size_t> expected(128, 0);
     expected[63] = 128;
     expected[127] = 128;
-    EXPECT_EQ(counting, expected);
+    EXPECT_RANGE_EQ(counting, expected);
 
     // Counting vectors can be added together
     std::vector<size_t> expected2(128, 0);
     expected2[63] = 256;
     expected2[127] = 256;
     counting += counting;
-    EXPECT_EQ(counting, expected2);
+    EXPECT_RANGE_EQ(counting, expected2);
 }
 
 // Check special case where there is only one `1` in the bitvector.
@@ -242,6 +242,68 @@ TYPED_TEST(interleaved_bloom_filter_test, counting_agent_no_ub)
     EXPECT_RANGE_EQ(agent.bulk_count(std::views::iota(0u, 128u)), expected);
     EXPECT_RANGE_EQ(agent2.bulk_count(std::views::iota(0u, 128u)), expected);
 }
+
+#ifdef __AVX512BW__ // The following tests require at least the AVX512BW instruction set (avx512 with byte word support).
+TYPED_TEST(interleaved_bloom_filter_test, simd_counting_agent)
+{
+    if constexpr ()
+    {
+        // 1. Test uncompressed interleaved_bloom_filter directly because the compressed one is not mutable.
+        seqan3::interleaved_bloom_filter ibf{seqan3::bin_count{128u},
+                                            seqan3::bin_size{1024u},
+                                            seqan3::hash_function_count{2u}};
+
+        for (size_t bin_idx : std::views::iota(0, 128))
+            for (size_t hash : std::views::iota(0, 128))
+                ibf.emplace(hash, seqan3::bin_index{bin_idx});
+
+        // 2. Construct either the uncompressed or compressed interleaved_bloom_filter and test set with bulk_count
+        TypeParam ibf2{ibf};
+        auto simd_agent_8 = ibf2.template simd_counting_agent<uint8_t>();
+        auto simd_agent_16 = ibf2.template simd_counting_agent<uint16_t>();
+        auto simd_agent_32 = ibf2.template simd_counting_agent<uint32_t>();
+        auto simd_agent_64 = ibf2.template simd_counting_agent<uint64_t>();
+        auto scalar_agent = ibf2.template counting_agent<size_t>();
+
+        std::vector<size_t> expected(128, 128);
+        EXPECT_RANGE_EQ(simd_agent_8.bulk_count(std::views::iota(0u, 128u)), expected);
+        EXPECT_RANGE_EQ(simd_agent_16.bulk_count(std::views::iota(0u, 128u)), expected);
+        EXPECT_RANGE_EQ(simd_agent_32.bulk_count(std::views::iota(0u, 128u)), expected);
+        EXPECT_RANGE_EQ(simd_agent_64.bulk_count(std::views::iota(0u, 128u)), expected);
+        EXPECT_RANGE_EQ(scalar_agent.bulk_count(std::views::iota(0u, 128u)), expected);
+    }
+}
+
+TYPED_TEST(interleaved_bloom_filter_test, simd_counting_agent_no_ub)
+{
+    // 1. Test uncompressed interleaved_bloom_filter directly because the compressed one is not mutable.
+    seqan3::interleaved_bloom_filter ibf{seqan3::bin_count{128u},
+                                         seqan3::bin_size{1024u},
+                                         seqan3::hash_function_count{2u}};
+
+    for (size_t bin_idx : std::array<size_t, 2>{63, 127})
+        for (size_t hash : std::views::iota(0, 128))
+            ibf.emplace(hash, seqan3::bin_index{bin_idx});
+
+    // 2. Construct either the uncompressed or compressed interleaved_bloom_filter and test set with bulk_contains
+    TypeParam ibf2{ibf};
+    auto simd_agent_8 = ibf2.template simd_counting_agent<uint8_t>();
+    auto simd_agent_16 = ibf2.template simd_counting_agent<uint16_t>();
+    auto simd_agent_32 = ibf2.template simd_counting_agent<uint32_t>();
+    auto simd_agent_64 = ibf2.template simd_counting_agent<uint64_t>();
+    auto scalar_agent = ibf2.template counting_agent<size_t>();
+
+    std::vector<size_t> expected(128, 0);
+    expected[63] = 128;
+    expected[127] = 128;
+    EXPECT_RANGE_EQ(simd_agent_8.bulk_count(std::views::iota(0u, 128u)), expected);
+    EXPECT_RANGE_EQ(simd_agent_16.bulk_count(std::views::iota(0u, 128u)), expected);
+    EXPECT_RANGE_EQ(simd_agent_32.bulk_count(std::views::iota(0u, 128u)), expected);
+    EXPECT_RANGE_EQ(simd_agent_64.bulk_count(std::views::iota(0u, 128u)), expected);
+    EXPECT_RANGE_EQ(scalar_agent.bulk_count(std::views::iota(0u, 128u)), expected);
+}
+
+#endif // __AVX512BW__
 
 TYPED_TEST(interleaved_bloom_filter_test, increase_bin_number_to)
 {
