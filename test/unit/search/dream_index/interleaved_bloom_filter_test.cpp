@@ -246,32 +246,29 @@ TYPED_TEST(interleaved_bloom_filter_test, counting_agent_no_ub)
 #ifdef __AVX512BW__ // The following tests require at least the AVX512BW instruction set (avx512 with byte word support).
 TYPED_TEST(interleaved_bloom_filter_test, simd_counting_agent)
 {
-    if constexpr ()
-    {
-        // 1. Test uncompressed interleaved_bloom_filter directly because the compressed one is not mutable.
-        seqan3::interleaved_bloom_filter ibf{seqan3::bin_count{128u},
-                                            seqan3::bin_size{1024u},
-                                            seqan3::hash_function_count{2u}};
+    // 1. Test uncompressed interleaved_bloom_filter directly because the compressed one is not mutable.
+    seqan3::interleaved_bloom_filter ibf{seqan3::bin_count{128u},
+                                        seqan3::bin_size{1024u},
+                                        seqan3::hash_function_count{2u}};
 
-        for (size_t bin_idx : std::views::iota(0, 128))
-            for (size_t hash : std::views::iota(0, 128))
-                ibf.emplace(hash, seqan3::bin_index{bin_idx});
+    for (size_t bin_idx : std::views::iota(0, 128))
+        for (size_t hash : std::views::iota(0, 128))
+            ibf.emplace(hash, seqan3::bin_index{bin_idx});
 
-        // 2. Construct either the uncompressed or compressed interleaved_bloom_filter and test set with bulk_count
-        TypeParam ibf2{ibf};
-        auto simd_agent_8 = ibf2.template simd_counting_agent<uint8_t>();
-        auto simd_agent_16 = ibf2.template simd_counting_agent<uint16_t>();
-        auto simd_agent_32 = ibf2.template simd_counting_agent<uint32_t>();
-        auto simd_agent_64 = ibf2.template simd_counting_agent<uint64_t>();
-        auto scalar_agent = ibf2.template counting_agent<size_t>();
+    // 2. Construct either the uncompressed or compressed interleaved_bloom_filter and test set with bulk_count
+    TypeParam ibf2{ibf};
+    auto simd_agent_8 = ibf2.template simd_counting_agent<uint8_t>();
+    auto simd_agent_16 = ibf2.template simd_counting_agent<uint16_t>();
+    auto simd_agent_32 = ibf2.template simd_counting_agent<uint32_t>();
+    auto simd_agent_64 = ibf2.template simd_counting_agent<uint64_t>();
+    auto scalar_agent = ibf2.template counting_agent<size_t>();
 
-        std::vector<size_t> expected(128, 128);
-        EXPECT_RANGE_EQ(simd_agent_8.bulk_count(std::views::iota(0u, 128u)), expected);
-        EXPECT_RANGE_EQ(simd_agent_16.bulk_count(std::views::iota(0u, 128u)), expected);
-        EXPECT_RANGE_EQ(simd_agent_32.bulk_count(std::views::iota(0u, 128u)), expected);
-        EXPECT_RANGE_EQ(simd_agent_64.bulk_count(std::views::iota(0u, 128u)), expected);
-        EXPECT_RANGE_EQ(scalar_agent.bulk_count(std::views::iota(0u, 128u)), expected);
-    }
+    std::vector<size_t> expected(128, 128);
+    EXPECT_RANGE_EQ(simd_agent_8.bulk_count(std::views::iota(0u, 128u)), expected);
+    EXPECT_RANGE_EQ(simd_agent_16.bulk_count(std::views::iota(0u, 128u)), expected);
+    EXPECT_RANGE_EQ(simd_agent_32.bulk_count(std::views::iota(0u, 128u)), expected);
+    EXPECT_RANGE_EQ(simd_agent_64.bulk_count(std::views::iota(0u, 128u)), expected);
+    EXPECT_RANGE_EQ(scalar_agent.bulk_count(std::views::iota(0u, 128u)), expected);
 }
 
 TYPED_TEST(interleaved_bloom_filter_test, simd_counting_agent_no_ub)
