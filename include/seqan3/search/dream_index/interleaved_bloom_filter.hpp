@@ -629,7 +629,8 @@ public:
 
     //!\overload
     template <std::ranges::input_range hash_range_t>
-    [[nodiscard]] std::vector<binning_bitvector> const & bulk_contains(hash_range_t && _simd_hash_range, size_t const hash_range_size) & noexcept
+    [[nodiscard]] std::vector<binning_bitvector> const & bulk_contains(hash_range_t && _simd_hash_range,
+                                                                       size_t const hash_range_size) & noexcept
     {
         assert(ibf_ptr != nullptr);
         // assert(result_buffer.size() == ibf_ptr->bin_count());
@@ -712,19 +713,21 @@ public:
             {
                 assert(res_buffer.data() != nullptr);
                 assert(reinterpret_cast<std::uintptr_t>(res_buffer.data()) % 64ull == 0);
-                for (size_t vector_id = 0; vector_id < vectors_per_bin; ++vector_id)
-                    *reinterpret_cast<simd_vec_t *>(res_buffer.data() + (vector_id << 3)) = simd::fill<simd_vec_t>(-1ULL);
+                std::ranges::fill(res_buffer.data(), res_buffer.data() + (vectors_per_bin * 8), -1ULL);
+                // for (size_t vector_id = 0; vector_id < vectors_per_bin; ++vector_id)
+                //     *reinterpret_cast<simd_vec_t *>(res_buffer.data() + (vector_id << 3)) = simd::fill<simd_vec_t>(-1ULL);
             });
 
             for (size_t i = 0; i < ibf_ptr->hash_funs; ++i, ++bloom_filter_indices_simd_it)
             {
                 decltype(result_buffer_it) result_it = result_buffer_it;
-                *bloom_filter_indices_simd_it >>= 6;
+                *bloom_filter_indices_simd_it >>= 6; // We devide the values by 64 to get the word offset of the bit
                 for (size_t vec_pos = 0; vec_pos < remaining_size; ++vec_pos, ++result_it)
                 {
                     uint64_t bf_index = (*bloom_filter_indices_simd_it)[vec_pos];
                     assert(reinterpret_cast<std::uintptr_t>(ibf_ptr->data.data() + bf_index) % 64ull == 0);
                     assert(reinterpret_cast<std::uintptr_t>(result_it->data()) % 64ull == 0);
+
                     for (size_t vector_id = 0; vector_id < vectors_per_bin; ++vector_id)
                     {
                         size_t const data_offset = vector_id << 3;
@@ -778,6 +781,7 @@ private:
         _hash ^= _hash >> _simd_hash_shift; // XOR and shift higher bits into lower bits
         _hash *= _simd_golden_ratio; // = 2^64 / golden_ration, to expand h to 64 bit range
         // TODO: Can we emulate a fastrange multiply or is it just easier to run the vectorised modulo operation.
+        // We could halve the vector and run the same instruction
         for (size_t i  = 0; i < simd_traits<simd_t>::length; ++i)
             _hash[i] = static_cast<uint64_t>((static_cast<__uint128_t>(_hash[i]) * static_cast<__uint128_t>(_simd_bin_size[i])) >> 64);
 
@@ -896,6 +900,7 @@ public:
 
     //!\brief Stores the result of bulk_count().
     counting_vector_type result_buffer{};
+    std::vector<counting_vector_type> result_buffer_collection{};
 
     simd_vec_t _simd_hash_range{};
 
@@ -950,6 +955,56 @@ public:
         return result_buffer;
     }
 
+    template <std::ranges::forward_range value_range_t>
+        // requires std::ranges::range<std::ranges::range_value_t<value_range_t>>
+    [[nodiscard]] std::vector<counting_vector_type> const & bulk_bulk_count(value_range_t && values) & noexcept
+    {
+        assert(ibf_ptr != nullptr);
+        assert(result_buffer.size() == ibf_ptr->bin_count());
+
+        static_assert(std::ranges::forward_range<value_range_t>, "The values must model input_range.");
+        // static_assert(std::unsigned_integral<std::ranges::range_value_t<value_range_t>>,
+        //               "An individual value must be an unsigned integral.");
+
+        if constexpr (data_layout_mode == data_layout::compressed)
+        {
+
+            for (auto const & value : values)
+                result_buffer_collection.push_back(bulk_count(value));
+        }
+        else
+        {
+            size_t const values_size = std::ranges::distance(values);
+            // std::cout << "DEBUG - values_size: " << values_size << "\n";
+            auto concatenated_range_size = compute_simd_hashes(values);
+
+            // std::cout << "DEBUG - concatenated_range_size: " << concatenated_range_size << "\n";
+
+            auto const & membership_vector = membership_agent.bulk_contains(_simd_hash_range, concatenated_range_size);
+
+            // std::cout << "DEBUG - membership_vector.size(): " << membership_vector.size() << "\n";
+
+            result_buffer_collection.resize(values_size, result_buffer);
+            // std::cout << "DEBUG - result_buffer_collection.size(): " << result_buffer_collection.size() << "\n";
+            auto membership_it = membership_vector.begin();
+            // The returned value contains all elements inside of the bulk.
+            size_t result_buffer_id{};
+            for (auto && hash_range : values)
+            {
+                std::ranges::fill(result_buffer_collection[result_buffer_id], 0);
+                // std::cout << "DEBUG - result_buffer_id: " << result_buffer_id << "\n";
+                size_t const hash_range_size = std::ranges::distance(hash_range);
+                for (size_t j = 0; j < hash_range_size; ++j, ++membership_it)
+                    result_buffer_collection[result_buffer_id] += *membership_it;
+
+                ++result_buffer_id;
+            }
+            // std::cout << "DEBUG - result_buffer_id: " << result_buffer_id << "\n";
+        }
+
+        return result_buffer_collection;
+    }
+
     // `bulk_count` cannot be called on a temporary, since the object the returned reference points to
     // is immediately destroyed.
     template <std::ranges::range value_range_t>
@@ -986,6 +1041,41 @@ private:
         }
 
         return hash_range_size;
+    }
+
+    template <std::ranges::forward_range value_range_t>
+    auto compute_simd_hashes(value_range_t const & range_range)
+    {
+        // Step 1a): transform to simd
+        size_t concatenated_size{};
+        for (auto && range : range_range)
+             concatenated_size += std::ranges::distance(range);
+
+        size_t const simd_hash_range_size = (concatenated_size + (hashes_per_simd_vector - 1)) / hashes_per_simd_vector;
+        _simd_hash_range.resize(simd_hash_range_size);
+        auto simd_hash_range_it = _simd_hash_range.begin();
+        size_t simd_pos = 0;
+        for (auto && hash_range : range_range)
+        {
+            auto hash_range_it = hash_range.begin(); // original hash range
+            while (hash_range_it != hash_range.end())
+            {
+                for (; simd_pos < hashes_per_simd_vector && hash_range_it != hash_range.end(); ++hash_range_it, ++simd_pos)
+                {
+                    (*simd_hash_range_it)[simd_pos] = *hash_range_it;
+                }
+
+                if (simd_pos == hashes_per_simd_vector)
+                {
+                    simd_pos = 0;
+                    ++simd_hash_range_it;
+                }
+            }
+
+            assert(simd_hash_range_it == _simd_hash_range.end());
+        }
+
+        return concatenated_size;
     }
 };
 
