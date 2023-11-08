@@ -17,4 +17,6 @@ seqan3_test (local_affine_unbanded_test.cpp)
 seqan3_test (semi_global_affine_banded_test.cpp)
 seqan3_test (semi_global_affine_unbanded_test.cpp)
 
+seqan3_test (issue3205_incorrect_sequence_ids_in_alignment_result_test.cpp)
+
 add_subdirectories ()
